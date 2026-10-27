@@ -1,551 +1,423 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../core/theme/app_palette.dart';
-import '../../core/utils/formatters.dart';
-import '../../models/plant.dart';
-import '../../providers/garden_provider.dart';
-import '../../widgets/app_card.dart';
-import '../../widgets/pill.dart';
-import 'garden_actions.dart';
-import 'garden_board.dart';
+import '../../models/models.dart';
+import '../../nav.dart';
+import '../../state/app_state.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_theme.dart';
+import '../../utils/format.dart';
+import '../../widgets/app_header.dart';
+import '../../widgets/common.dart';
+import '../../widgets/visuals.dart';
+import 'garden_widgets.dart';
+import 'harvest_screens.dart';
+import 'plant_details_screens.dart';
+import 'planting_screens.dart';
+import 'tool_screens.dart';
 
-class GardenScreen extends StatelessWidget {
+class GardenScreen extends StatefulWidget {
   const GardenScreen({super.key});
 
+  /// Selected pot (1-based). Other screens set this before switching to the tab.
+  static final selection = ValueNotifier<int?>(-1); // -1 = not initialised yet
+
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
-      children: const [
-        GardenBoard(),
-        SizedBox(height: 14),
-        _ToolBar(),
-        SizedBox(height: 14),
-        _InfoCard(),
-        SizedBox(height: 16),
-        _StatsRow(),
-      ],
-    );
-  }
+  State<GardenScreen> createState() => _GardenScreenState();
 }
 
-// ---------------------------------------------------------------------------
-// Tool selector (Water / Fertilize / Shovel)
-// ---------------------------------------------------------------------------
-
-class _ToolBar extends StatelessWidget {
-  const _ToolBar();
-
+class _GardenScreenState extends State<GardenScreen> {
   @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final g = context.watch<GardenProvider>();
-    return Row(
-      children: [
-        Expanded(
-          child: _ToolButton(
-            label: 'Water',
-            sub: '${g.charges}/${g.maxCharges} H2O',
-            icon: Icons.water_drop_outlined,
-            selected: g.tool == GardenTool.water,
-            showSub: dark,
-            onTap: () => g.setTool(GardenTool.water),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _ToolButton(
-            label: 'Fertilize',
-            sub: '-50% Time',
-            icon: Icons.spa_outlined,
-            selected: g.tool == GardenTool.fertilize,
-            showSub: dark,
-            onTap: () => g.setTool(GardenTool.fertilize),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _ToolButton(
-            label: 'Shovel',
-            sub: 'Dig Up',
-            icon: Icons.handyman_outlined,
-            selected: g.tool == GardenTool.shovel,
-            showSub: dark,
-            onTap: () => g.setTool(GardenTool.shovel),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
-    required this.label,
-    required this.sub,
-    required this.icon,
-    required this.selected,
-    required this.showSub,
-    required this.onTap,
-  });
-
-  final String label;
-  final String sub;
-  final IconData icon;
-  final bool selected;
-  final bool showSub;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-
-    final Color bg;
-    final Color fg;
-    final Color border;
-    if (selected) {
-      bg = dark ? p.primarySoft : p.primary;
-      fg = dark ? p.onPrimarySoft : p.onPrimary;
-      border = dark ? p.onPrimarySoft : p.primary;
-    } else {
-      bg = dark ? p.surface : p.neutralChip;
-      fg = p.text;
-      border = p.border;
+  void initState() {
+    super.initState();
+    if (GardenScreen.selection.value == -1) {
+      final plants = context.read<AppState>().plants;
+      final first = plants.isEmpty ? null : (plants.map((p) => p.pot).toList()..sort()).first;
+      GardenScreen.selection.value = first;
     }
+    GardenScreen.selection.addListener(_onSel);
+  }
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
+  @override
+  void dispose() {
+    GardenScreen.selection.removeListener(_onSel);
+    super.dispose();
+  }
+
+  void _onSel() {
+    if (mounted) setState(() {});
+  }
+
+  void _tap(int pot) {
+    GardenScreen.selection.value = GardenScreen.selection.value == pot ? null : pot;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final c = context.c;
+    final sel = GardenScreen.selection.value;
+    final selected = (sel == null || sel < 1) ? null : sel;
+    final plant = selected == null ? null : s.plantAt(selected);
+    return Scaffold(
+      backgroundColor: c.isDark ? c.bg : const Color(0xFFEFF6F2),
+      body: SafeArea(
+        bottom: false,
+        child: Column(children: [
+          const AppHeader(),
+          Expanded(
+            child: ListView(padding: const EdgeInsets.fromLTRB(16, 6, 16, 24), children: [
+              const _GardenBanner(),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: c.isDark ? c.card : Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: c.border),
+                  boxShadow: c.isDark ? null : [BoxShadow(color: c.shadow, blurRadius: 16, offset: const Offset(0, 6))],
+                ),
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: GardenRules.potCount,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 6,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: .62,
+                  ),
+                  itemBuilder: (_, i) => PotTile(
+                    number: i + 1,
+                    plant: s.plantAt(i + 1),
+                    selected: selected == i + 1,
+                    onTap: () => _tap(i + 1),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (selected == null)
+                const Padding(padding: EdgeInsets.only(top: 60), child: _NoPlantSelected())
+              else if (plant == null)
+                Padding(padding: const EdgeInsets.only(top: 60), child: _EmptyPotPanel(pot: selected))
+              else
+                _PlantPanel(plant: plant),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _GardenBanner extends StatelessWidget {
+  const _GardenBanner();
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      height: 82,
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border, width: selected && dark ? 1.8 : 1),
-        boxShadow: selected && dark
-            ? [BoxShadow(color: p.onPrimarySoft.withAlpha(70), blurRadius: 14)]
-            : null,
+        gradient: c.isDark
+            ? const LinearGradient(colors: [Color(0xFF10231B), Color(0xFF143326)])
+            : const LinearGradient(colors: [Color(0xFFD9F2E3), Color(0xFFCDEEDB)]),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: c.isDark ? c.border : const Color(0xFFBFE6CE)),
       ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
-            child: Column(
-              children: [
-                Icon(icon, color: fg, size: 26),
-                const SizedBox(height: 8),
-                Text(label,
-                    style: TextStyle(color: fg, fontSize: 13.5, fontWeight: FontWeight.w700)),
-                if (showSub) ...[
-                  const SizedBox(height: 2),
-                  Text(sub,
-                      style: TextStyle(
-                          color: fg.withAlpha(190), fontSize: 11.5, fontWeight: FontWeight.w500)),
-                ] else
-                  const SizedBox(height: 0),
-              ],
-            ),
+      child: Stack(children: [
+        Positioned(
+          right: -6,
+          top: -4,
+          child: Transform.rotate(
+            angle: -.5,
+            child: Icon(Icons.eco, size: 90, color: c.isDark ? const Color(0xFF1E4A38) : const Color(0xFF9CD6B2)),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Selected pot details
-// ---------------------------------------------------------------------------
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    final g = context.watch<GardenProvider>();
-    final sel = g.selected;
-    final plant = g.selectedPlant;
-
-    if (sel == null) {
-      return _HintCard(
-        icon: Icons.touch_app_outlined,
-        title: 'Tap a pot',
-        text: 'Plant a seed in an empty pot, or select a plant to water, fertilize or harvest it.',
-      );
-    }
-    if (plant == null) {
-      return AppCard(
-        padding: const EdgeInsets.all(18),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                  color: p.neutralChip, borderRadius: BorderRadius.circular(14)),
-              child: Icon(Icons.add_circle_outline, color: p.primary),
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            IconTile(Icons.spa_outlined,
+                size: 48, iconSize: 24, radius: 12, bg: c.isDark ? c.cardAlt : const Color(0xFFBFE8CF), fg: c.mintText),
             const SizedBox(width: 14),
-            Expanded(
-              child: Column(
+            Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Empty Pot ${sel + 1}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 2),
-                  Text('Plant a seed to start growing.',
-                      style: TextStyle(color: p.textMuted, fontSize: 14)),
-                ],
-              ),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: p.primary,
-                foregroundColor: p.onPrimary,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              ),
-              onPressed: () => showPlantSheet(context, sel),
-              child: const Text('Plant', style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
-          ],
+                  Text('Your Garden',
+                      style: T.p(19, w: FontWeight.w600, c: c.isDark ? c.text : const Color(0xFF0F2B20))),
+                  Text('18 pots • Grow, study, earn XP!',
+                      style: T.p(12, c: c.isDark ? c.textMuted : const Color(0xFF2F4F3F))),
+                ]),
+          ]),
         ),
-      );
-    }
-    return _PlantCard(pot: sel, plant: plant);
-  }
-}
-
-class _HintCard extends StatelessWidget {
-  const _HintCard({required this.icon, required this.title, required this.text});
-
-  final IconData icon;
-  final String title;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    return AppCard(
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        children: [
-          Icon(icon, color: p.primary, size: 30),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(text, style: TextStyle(color: p.textMuted, fontSize: 14, height: 1.4)),
-              ],
-            ),
-          ),
-        ],
-      ),
+      ]),
     );
   }
 }
 
-class _PlantCard extends StatelessWidget {
-  const _PlantCard({required this.pot, required this.plant});
+class _NoPlantSelected extends StatelessWidget {
+  const _NoPlantSelected();
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return SFCard(
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(24, 36, 24, 50),
+      child: Column(children: [
+        Stack(alignment: Alignment.center, children: [
+          const SizedBox(width: 120, height: 84),
+          const PotIllustration(size: 80, sprout: true),
+          for (final o in const [Offset(-50, -14), Offset(50, -14), Offset(-44, 18), Offset(44, 18)])
+            Transform.translate(
+              offset: o,
+              child: Container(
+                  width: o.dy < 0 ? 8 : 4,
+                  height: o.dy < 0 ? 2 : 4,
+                  decoration: BoxDecoration(color: const Color(0xFF8FCBA5), borderRadius: BorderRadius.circular(2))),
+            ),
+        ]),
+        const SizedBox(height: 16),
+        Text('No Plant Selected', style: T.p(16, w: FontWeight.w700, c: c.heading)),
+        const SizedBox(height: 10),
+        Text('Select a planted flower to view its details, growth progress, and available actions.',
+            textAlign: TextAlign.center, style: T.p(13, c: c.textMuted, h: 1.55)),
+      ]),
+    );
+  }
+}
 
+class _EmptyPotPanel extends StatelessWidget {
   final int pot;
-  final Plant plant;
-
-  String _description(DateTime now) {
-    if (plant.isReady(now)) {
-      return 'Fully grown! Tap the plant or Claim to collect +${plant.type.xp} XP.';
-    }
-    if (plant.isThirsty(now)) return 'Growth paused. Tap Water to replenish moisture.';
-    if (plant.needsWaterSoon(now)) return 'Needs hydration soon. Tap Water to replenish moisture.';
-    if (plant.fertilized) return 'Fertilized and growing twice as fast.';
-    return 'Healthy and growing. Keep it hydrated to stay on schedule.';
-  }
-
+  const _EmptyPotPanel({required this.pot});
   @override
   Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final now = DateTime.now();
-    final progress = plant.progressAt(now);
-    final ready = progress >= 1;
-    final thirsty = plant.isThirsty(now);
-    final percent = (progress * 100).floor();
-    final lvl = plant.stageAt(now);
-    final lvlBg = dark ? const Color(0xFF3A3410) : const Color(0xFFEFE2C9);
-    final lvlFg = dark ? const Color(0xFFE8C547) : const Color(0xFF8A6A2E);
-
-    final timePillBg = dark ? p.primarySoft : p.primarySoft;
-    final timeText = ready ? 'READY' : formatCountdown(plant.untilNextStage(now));
-    final caption = ready
-        ? 'TAP PLANT TO CLAIM'
-        : thirsty
-            ? 'GROWTH PAUSED'
-            : 'UNTIL NEXT STAGE';
-
-    return AppCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 46,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: p.neutralChip,
-                  borderRadius: BorderRadius.circular(14),
-                  border: dark ? Border.all(color: p.border) : null,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.asset(
-                  plant.type.asset,
-                  fit: BoxFit.cover,
-                  alignment: Alignment.topCenter,
-                  errorBuilder: (_, __, ___) => Icon(Icons.local_florist, color: p.primary),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(plant.type.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
-                        ),
-                        const SizedBox(width: 8),
-                        Pill(
-                          label: ready ? 'MAX' : 'Lv. $lvl',
-                          background: lvlBg,
-                          foreground: lvlFg,
-                          fontSize: 11.5,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(_description(now),
-                        style: TextStyle(color: p.textMuted, fontSize: 13.5, height: 1.35)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: timePillBg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: dark ? Border.all(color: p.onPrimarySoft.withAlpha(120)) : null,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(ready ? Icons.star_rounded : Icons.schedule,
-                            size: 16, color: p.onPrimarySoft),
-                        const SizedBox(width: 5),
-                        Text(timeText,
-                            style: TextStyle(
-                                color: p.onPrimarySoft,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    width: 84,
-                    child: Text(caption,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color: p.textMuted,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4)),
-                  ),
-                ],
-              ),
-            ],
+    final c = context.c;
+    return SFCard(
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Transform.rotate(
+              angle: .3,
+              child: Icon(Icons.drag_handle, color: const Color(0xFF8FCBA5).withValues(alpha: .7), size: 16)),
+          const SizedBox(width: 12),
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(color: c.isDark ? c.cardAlt : const Color(0xFFD7F0E0), shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: SizedBox(width: 50, height: 42, child: CustomPaint(painter: PotPainter())),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Icon(Icons.spa_outlined, size: 15, color: p.primary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text('Growth Progress',
-                    style: TextStyle(
-                        color: p.text, fontSize: 13.5, fontWeight: dark ? FontWeight.w700 : FontWeight.w500)),
+          const SizedBox(width: 12),
+          Transform.rotate(
+              angle: -.3,
+              child: Icon(Icons.drag_handle, color: const Color(0xFF8FCBA5).withValues(alpha: .7), size: 16)),
+        ]),
+        const SizedBox(height: 14),
+        Text('Empty Pot', style: T.p(18, w: FontWeight.w700, c: c.heading)),
+        const SizedBox(height: 4),
+        Text('No flower planted here yet.\nChoose a seed to start growing!',
+            textAlign: TextAlign.center, style: T.p(13, c: c.textMuted, h: 1.5)),
+        const SizedBox(height: 18),
+        PrimaryButton('Plant a Flower',
+            icon: Icons.yard_outlined,
+            radius: 14,
+            color: c.isDark ? c.primary : const Color(0xFF14533C),
+            onTap: () => pushRoot(context, ChooseFlowerScreen(pot: pot))),
+        const SizedBox(height: 14),
+        Text('Tap again or cancel to close this panel.', style: T.p(11, c: c.textMuted)),
+      ]),
+    );
+  }
+}
+
+class _PlantPanel extends StatelessWidget {
+  final Plant plant;
+  const _PlantPanel({required this.plant});
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final f = plant.flower;
+    final pct = (plant.progress * 100).round();
+    return SFCard(
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          GestureDetector(
+            onTap: () => pushTab(context, PlantDetailsScreen(pot: plant.pot)),
+            child: Container(
+              width: 76,
+              height: 76,
+              decoration: BoxDecoration(
+                color: c.isDark ? c.cardAlt : const Color(0xFFE6F4EA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: c.border),
               ),
-              Text('$percent%',
-                  style: TextStyle(
-                      color: dark ? p.onPrimarySoft : p.primary,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 6,
-              backgroundColor: p.border,
-              valueColor: AlwaysStoppedAnimation(dark ? p.onPrimarySoft : p.primary),
+              padding: const EdgeInsets.all(6),
+              child: PlantArt(f.id, size: 64),
             ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _ActionButton(
-                  icon: ready ? Icons.star_rounded : Icons.water_drop_outlined,
-                  label: ready ? 'Claim XP' : 'Water',
-                  bg: dark ? p.primarySoft : p.primary,
-                  fg: dark ? p.onPrimarySoft : p.onPrimary,
-                  border: dark ? p.onPrimarySoft.withAlpha(110) : null,
-                  onTap: () => ready ? claimPot(context, pot) : waterPot(context, pot),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ActionButton(
-                  icon: Icons.spa_outlined,
-                  label: 'Fertilize',
-                  bg: dark ? const Color(0xFF2A2412) : const Color(0xFFD2A476),
-                  fg: dark ? const Color(0xFFE8C547) : const Color(0xFF4A2F10),
-                  border: dark ? const Color(0xFF6B5C22) : null,
-                  onTap: () => fertilizePot(context, pot),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ActionButton(
-                  icon: Icons.handyman_outlined,
-                  label: 'Shovel',
-                  bg: p.neutralChip,
-                  fg: p.text,
-                  border: dark ? p.border : null,
-                  onTap: () => digPot(context, pot),
-                ),
-              ),
-            ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(child: Text(f.name, style: T.p(17, w: FontWeight.w700, c: c.heading))),
+                const SizedBox(width: 8),
+                Pill(plant.ready ? 'Ready' : (plant.needsWater ? 'Thirsty' : 'Growing'),
+                    fontSize: 11,
+                    bg: c.isDark ? Colors.transparent : const Color(0xFFD7F2E0),
+                    borderColor: c.isDark ? const Color(0xFF2B6B53) : const Color(0xFFBFE6CE),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2)),
+              ]),
+              const SizedBox(height: 4),
+              Text(f.description, style: T.p(12, c: c.textMuted, h: 1.45)),
+            ]),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.bg,
-    required this.fg,
-    required this.onTap,
-    this.border,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color bg;
-  final Color fg;
-  final Color? border;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: bg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: border == null ? BorderSide.none : BorderSide(color: border!),
-      ),
-      child: InkWell(
-        customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 18, color: fg),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 14)),
-              ),
-            ],
+          const SizedBox(width: 6),
+          Container(
+            width: 96,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: c.isDark ? Colors.transparent : const Color(0xFFE6F4EA),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: c.isDark ? c.border : const Color(0xFFCDEBD8)),
+            ),
+            child: Column(children: [
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(Icons.schedule, size: 14, color: c.mintText),
+                const SizedBox(width: 4),
+                Text(plant.ready ? 'Ready' : fmtHm(plant.remaining), style: T.p(14, w: FontWeight.w700, c: c.heading)),
+              ]),
+              Text('UNTIL\nHARVEST',
+                  textAlign: TextAlign.center, style: T.p(8.5, w: FontWeight.w600, c: c.textMuted, ls: .5, h: 1.3)),
+            ]),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Footer stats
-// ---------------------------------------------------------------------------
-
-class _StatsRow extends StatelessWidget {
-  const _StatsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final planted = context.select<GardenProvider, int>((g) => g.plantedCount);
-    final boost = planted.clamp(0, 15);
-    final accent = dark ? p.onPrimarySoft : p.primary;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.eco_outlined, size: 17, color: p.primary),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Icon(Icons.flag, size: 16, color: c.isDark ? c.accent : const Color(0xFF2E9E64)),
+          const SizedBox(width: 6),
+          Text('Growth Progress', style: T.p(13, w: FontWeight.w600, c: c.heading)),
+          const Spacer(),
+          Text('$pct%', style: T.p(13, w: FontWeight.w700, c: c.heading)),
+        ]),
+        const SizedBox(height: 8),
+        SFProgress(
+            value: plant.progress,
+            height: 10,
+            color: c.isDark ? c.accent : const Color(0xFF2E9E64),
+            track: c.isDark ? c.border : const Color(0xFFE2EFE7)),
+        const SizedBox(height: 16),
+        IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+              child: _ToolTile(
+                  title: 'Water',
+                  body: 'Keep it hydrated to keep it growing.',
+                  icon: Icons.water_drop,
+                  bg: c.isDark ? c.cardAlt : const Color(0xFFEAF3FE),
+                  border: c.isDark ? c.border : const Color(0xFFCFE3FB),
+                  iconColor: const Color(0xFF2F80ED),
+                  titleColor: c.heading,
+                  onTap: () => pushTab(context, WaterPlantScreen(pot: plant.pot)))),
           const SizedBox(width: 10),
           Expanded(
-            flex: 3,
-            child: Text(dark ? 'Botanical Garden\nBoost:' : 'Study Garden\nBoost:',
-                style: TextStyle(color: p.text, fontSize: 13.5, height: 1.5)),
-          ),
+              child: _ToolTile(
+                  title: 'Fertilize',
+                  body: '2× growth speed (1 use per plant).',
+                  icon: Icons.medication_liquid,
+                  bg: c.isDark ? c.cardAlt : const Color(0xFFEAF6EE),
+                  border: c.isDark ? c.border : const Color(0xFFCDEBD8),
+                  iconColor: const Color(0xFF2E9E64),
+                  titleColor: c.heading,
+                  onTap: () => pushTab(context, FertilizeScreen(pot: plant.pot)))),
+          const SizedBox(width: 10),
           Expanded(
-            flex: 3,
-            child: Text('+$boost% Focus\nEfficiency',
-                style: TextStyle(
-                    color: accent, fontSize: 13.5, fontWeight: FontWeight.w800, height: 1.5)),
+              child: _ToolTile(
+                  title: 'Shovel',
+                  body: 'Remove plant and free the pot.',
+                  icon: Icons.colorize,
+                  bg: c.isDark ? const Color(0xFF2A1518) : const Color(0xFFFEEFF1),
+                  border: c.isDark ? const Color(0xFF5C2228) : const Color(0xFFFBD0D8),
+                  iconColor: const Color(0xFFE5486B),
+                  titleColor: c.isDark ? const Color(0xFFF87171) : const Color(0xFF7F1D1D),
+                  onTap: () => pushTab(context, ShovelScreen(pot: plant.pot)))),
+        ])),
+        const SizedBox(height: 14),
+        Material(
+          color: c.isDark ? c.cardAlt : const Color(0xFFE6F4EA),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => pushTab(
+                context, plant.ready ? ReadyToHarvestScreen(pot: plant.pot) : PlantOverviewScreen(pot: plant.pot)),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: c.isDark ? c.border : const Color(0xFFCDEBD8))),
+              child: Row(children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                      color: c.isDark ? Colors.transparent : const Color(0xFF2E9E64),
+                      shape: BoxShape.circle,
+                      border: c.isDark ? Border.all(color: c.border) : null),
+                  child: Icon(Icons.star_rounded, size: 18, color: c.isDark ? c.accent : Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Harvest gives you XP!', style: T.p(13.5, w: FontWeight.w700, c: c.heading)),
+                    Text('When the plant is fully grown, you can claim your XP.', style: T.p(11, c: c.textMuted)),
+                  ]),
+                ),
+                Icon(Icons.chevron_right, color: c.textMuted),
+              ]),
+            ),
           ),
-          Icon(Icons.auto_awesome, size: 16, color: dark ? p.coin : p.warmText),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 2,
-            child: Text('18 Pots\nActive',
-                style: TextStyle(
-                    color: dark ? p.coin : p.warmText,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                    height: 1.5)),
-          ),
-        ],
+        ),
+      ]),
+    );
+  }
+}
+
+class _ToolTile extends StatelessWidget {
+  final String title, body;
+  final IconData icon;
+  final Color bg, border, iconColor, titleColor;
+  final VoidCallback onTap;
+  const _ToolTile(
+      {required this.title,
+      required this.body,
+      required this.icon,
+      required this.bg,
+      required this.border,
+      required this.iconColor,
+      required this.titleColor,
+      required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 112),
+          padding: const EdgeInsets.fromLTRB(10, 14, 8, 10),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: border)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, size: 22, color: iconColor),
+            const SizedBox(height: 10),
+            Text(title, style: T.p(13, w: FontWeight.w700, c: titleColor)),
+            Text(body, style: T.p(10.5, c: c.textMuted, h: 1.3)),
+          ]),
+        ),
       ),
     );
   }
