@@ -39,6 +39,9 @@ jobs:
             fi
           done
 
+      - name: Upgrade file_picker to a version built for Android 36
+        run: flutter pub upgrade --major-versions file_picker
+
       - name: Get packages
         run: flutter pub get
 
