@@ -7,7 +7,7 @@ void main() {
   testWidgets('app loads smoke test', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
 
-    await tester.pumpWidget(const MyApp());
+    await tester.pumpWidget(const StudyFloraApp());
     await tester.pumpAndSettle();
 
     expect(find.text('StudyFlora'), findsOneWidget);
