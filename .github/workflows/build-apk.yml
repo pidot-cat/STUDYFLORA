@@ -31,6 +31,12 @@ jobs:
             perl -0pi -e 's|<manifest([^>]*)>|<manifest$1>\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$f"
           fi
 
+      - name: Set compileSdk to 36
+        run: |
+          for f in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f "$f" ] && sed -i -E 's/(compileSdk[ =]+)(flutter\.compileSdkVersion|[0-9]+)/\136/g' "$f"
+          done
+
       - name: Get packages
         run: flutter pub get
 
@@ -45,5 +51,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: studyflora-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-        
+          path: build/app/outputs/flutter-apk/app-debug.apk 
