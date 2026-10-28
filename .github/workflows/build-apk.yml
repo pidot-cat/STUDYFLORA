@@ -1,1 +1,49 @@
+name: Build APK
 
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create android and web folders if missing
+        run: |
+          if [ ! -d android ]; then
+            flutter create --platforms=android,web --project-name studyflora --org com.studyflora .
+          fi
+
+      - name: Add INTERNET permission
+        run: |
+          f=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' "$f"; then
+            perl -0pi -e 's|<manifest([^>]*)>|<manifest$1>\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$f"
+          fi
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: studyflora-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+        
