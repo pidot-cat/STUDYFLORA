@@ -1,75 +1,57 @@
-# StudyFlora — Flutter (Android)
+# Study Flora
 
-Flutter/Dart build of the approved StudyFlora mock-ups: auth, onboarding, Home, Garden (18 pots), Study (upload → summary → quiz → results → flash review), Shop, and Settings/Profile. Light and Dark themes are included.
+A gamified study and quiz reviewer for students, built with Flutter and Dart for Android only.
+Upload your notes and the app pulls out key points and builds a practice quiz. Verified modules,
+quizzes and harvests earn rewards that grow your Zen Garden.
 
-## Setup
+## Run it
 
-1. Create a fresh project (or use your existing one):
-   ```
-   flutter create --platforms android studyflora
-   ```
-2. Copy these into the project root, replacing what's there: `lib/`, `assets/`, `pubspec.yaml`, `analysis_options.yaml`.
-3. In `android/app/src/main/AndroidManifest.xml`, add this line above `<application>`:
-   ```xml
-   <uses-permission android:name="android.permission.INTERNET"/>
-   ```
-   Google Fonts and the online check both need it.
-4. Run:
-   ```
-   flutter pub get
-   flutter run
-   ```
+```bash
+flutter pub get
+flutter run                      # demo mode: accounts are stored on the phone
+# or, with cloud login + sync:
+flutter run --dart-define=SUPABASE_URL=https://xxxx.supabase.co --dart-define=SUPABASE_ANON_KEY=eyJ...
+flutter test                     # garden-rule and analyzer unit tests
+```
 
-The code requires Dart 3.6+ (Flutter 3.27 or newer). Fonts (Poppins, Plus Jakarta Sans, Playfair Display) download through `google_fonts` the first time the app has internet. After that they're cached.
+### Supabase setup (online features)
+1. Create a Supabase project. Under **Authentication**, turn on the Email provider.
+2. Open **SQL Editor** and run `supabase/schema.sql`. It creates the `user_data` and `quiz_attempts` tables with Row Level Security.
+3. Run the app with the two `--dart-define` values from **Project Settings → API**.
 
-## Project structure
+When the keys are missing, the sign-in screen shows a **Demo mode** banner. Accounts, login and the
+password reset then work on the phone only, so the app can still be graded offline.
+
+## Project structure (SRS §5)
 
 ```
 lib/
-  main.dart                  app entry, Provider, light/dark ThemeMode
-  nav.dart                   pushTab / pushRoot / goTab / goRoot helpers
-  theme/                     design tokens (SFColors light+dark) and fonts (T.p / T.j / T.serif)
-  models/                    Flower catalog, Plant (growth logic), tools, quiz, modules, avatars, borders, levels
-  data/seed_data.dart        starter data shown on a new account (matches the mock-up numbers)
-  state/app_state.dart       single ChangeNotifier: auth, garden, shop, study, sync, settings (SharedPreferences)
-  services/module_processor  offline PDF/DOCX/TXT text extraction, key points and quiz generation
-  widgets/                   shared UI: cards, pills, buttons, header, avatar ring, borders, pots
-  screens/
-    onboarding/  splash, 3-slide onboarding
-    auth/        sign in (+ validation/auth-failure states), create account (+ email-in-use), creating / success / failure,
-                 forgot password, reset link sent, set new password, reset success, no internet
-    shell/       5-tab shell; each tab has its own Navigator so the bottom bar stays on sub-screens
-    home/        home, inventory (seeds / garden tools), all seeds, study "see all", subject progress, study material, summary
-    garden/      garden grid + panels, choose flower, confirm planting, water / fertilize / shovel,
-                 plant details (both designs), ready to harvest, harvesting, harvest complete
-    study/       study review (upload), archived modules, saved module view, full summary, practice quiz,
-                 quiz results, review answers, flash review, quiz history, export summary (.txt)
-    shop/        seeds (single/bundle), garden tools, borders, purchase sheets, success sheets, insufficient-XP sheet
-    settings/    settings, profile & progress, choose avatar, choose border, switch / add account, log out,
-                 cloud sync & data, privacy policy, terms of service
+  core/        constants.dart (all game rules), theme.dart (light + dark tokens), format.dart
+  models/      flower, pot (growth math), study (module, quiz), cosmetics (avatars, borders, badges, tools)
+  services/    storage, auth (Supabase), sync, text_extractor (PDF/DOCX/TXT), text_analyzer,
+               module_validator, quiz_generator
+  providers/   game, study, settings, auth, sync, feedback_bus (Provider / ChangeNotifier)
+  widgets/     common UI kit, plant + profile widgets, bottom sheets
+  screens/     splash, onboarding, auth/, home/, garden/, study/, shop/, settings/
+assets/        plants (seed / sprout / bloom / wilted × 12), avatars, borders, tools, images, fonts
 ```
 
-## Game rules as implemented
+## Key features
+| Area | What it does |
+|---|---|
+| **Plant stages** | Every flower goes through 3 stages. Stage 1 is the **seed**, stage 2 is the **sprout** (budding petals, from 35 % growth) and stage 3 is the **full bloom**, which can be claimed for XP or left on display. A dry sprout shows the wilted art. |
+| **Growth rules** | Each flower needs 6 h of *hydrated* growth. A newly planted seed starts dry, and each watering adds 2 h. Growth pauses at 0 hydration. Fertilizer gives 2× speed (it halves the remaining time and the % does not jump), once per plant. The Shovel removes a plant after you confirm. |
+| **Drag-and-drop garden** | The whole garden fits on one screen (no scrolling). Long-press any pot, or turn on **Arrange**, then drop it on another pot. The pot moves with its plant, the other pot glides into the empty spot, and the drop ends with a bounce. |
+| **Home hero** | The most important plant is shown big in a terracotta pot, with a timer, a hydration bar, and a *Ready to Harvest*, *Needs water* or *Growing* badge. |
+| **Upload reward** | The file is checked for type, size (25 MB max), readable text, full sentences, at least 3 key points, lesson structure and repetitive filler. A **verified** module lets you choose **a random seed, 50 coins or 50 XP**, once per unique file (SHA-256 duplicate check). |
+| **Quiz** | Up to 10 questions of 3 types, 30 s each, with flagging, instant feedback and a running score. Coins follow the FR-3.6 table, and a module counts as mastered at 60 % or higher. |
+| **Shop** | Seeds can be bought singly or as a bundle of 5. Garden tools are bought with coins. Avatar borders are bought with **XP**, and **each border comes with a matching badge**. |
+| **Badges** | There are 5 border badges and 10 achievements (First Sprout, Quiz Ace, Botanist…). Achievements have rewards you can claim, and one badge can be showcased on your profile. |
+| **Offline-first sync** | Every change is saved on the phone and queued. Sync runs when you are online. Quiz attempts are merged by id, modules by file hash, and the newer game state wins. Sync status and Retry are in Settings. |
+| **Testing (demo)** | Settings → *Time skip* moves the garden clock forward so all 3 stages can be shown in a defense. |
 
-- Every flower takes 6 hours to grow, and only grows while it's hydrated. One watering lasts 6 hours.
-- The watering can holds 3 charges and gets 1 charge back every 10 minutes. Fertilizer gives 2× speed and can be used once per plant. The shovel removes a plant and is used up.
-- Harvesting gives +10 XP and +20 coins, and frees the pot.
-- Each new unique file you upload gives +10 coins. Re-uploading the same file just reopens the saved module.
-- Quiz coins follow the score bracket on the results screen (100% → 100, 90–99 → 75, 80–89 → 50, 70–79 → 30, 60–69 → 20, 50–59 → 10, below 50 → 5). The pass mark is 60%.
-- Levels: Lv1 0–100 XP, Lv2 100–300, Lv3 300–600, Lv4 600–1000, and so on. Avatar borders are bought with XP.
-
-## Things that are local or simulated (no backend)
-
-- **Accounts** are stored on the device (passwords are SHA-256 hashed in SharedPreferences). Sign-in and create-account check for internet first, which is how the "No Internet" and "Account Creation Failed" screens appear.
-- **Password reset:** no email gets sent. On "Reset Link Sent", tapping the **Check Your Inbox** card opens the Set New Password screen, standing in for the emailed link.
-- **Cloud sync** checks connectivity and records a sync event (Sync history, Last synced). Nothing is uploaded yet. You can plug a real backend into `AppState.sync()` later.
-- **Continue with Google** shows a "not available in this build" message.
-- **Music, Sound and Notifications** toggles are saved, but no audio or notification system is connected to them yet.
-
-## Notes on the design
-
-- The illustrations that only existed inside the mock-ups (onboarding images, sunflower/daisy pots, tool icons, avatars, cell diagrams, Terms illustration) were cropped from the mock-up PNGs into `assets/`. They're at mock-up resolution, so swap in higher-resolution originals if you have them.
-- The 12 flower badge images come from your IMAGES USED folder.
-- Icons are Material Icons chosen to match the mock-up glyphs as closely as possible.
-- Dark-mode mock-ups existed for Home, Garden, Study, Shop and Settings, and those follow the DM-* designs. Every other screen uses the same dark tokens.
-- The splash, onboarding and auth screens were designed in light mode only, so they always render light.
+## Changes to the SRS that should be written in
+* **FR-2.5**: change "10 coins once per unique file" to "a verified upload lets the user choose a random seed, 50 coins or 50 XP, once per unique file".
+* **FR-4.4**: name the stages *seed → sprout (budding petals) → full bloom*.
+* **FR-5.2**: add "each avatar border comes with a badge of the same theme", plus an achievement-badge system.
+* The upload validation checklist (the "proof that the file is a real module" rules) is in `services/module_validator.dart`.

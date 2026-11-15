@@ -1,346 +1,341 @@
-import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
-import '../core/constants/storage_keys.dart';
-import '../core/utils/coin_rewards.dart';
-import '../models/quiz_models.dart';
-import '../models/study_module.dart';
-import '../services/quiz_generator.dart';
+import '../core/constants.dart';
+import '../core/format.dart';
+import '../models/cosmetics.dart';
+import '../models/flower.dart';
+import '../models/study.dart';
+import '../services/module_validator.dart';
 import '../services/storage_service.dart';
-import '../services/study_analyzer.dart';
+import '../services/text_analyzer.dart';
 import '../services/text_extractor.dart';
-import 'user_provider.dart';
+import 'game_provider.dart';
 
-enum StudyView { review, aiHub }
-
-enum QuizPhase { idle, running, finished }
-
-enum UploadStatus { success, duplicate, cancelled, tooBig, unreadable, notEnoughContent }
+enum UploadKind { duplicate, rejected, accepted }
 
 class UploadOutcome {
-  const UploadOutcome(this.status, [this.message = '']);
-  final UploadStatus status;
+  final UploadKind kind;
+  final StudyModule? module;
+  final ValidationReport? report;
   final String message;
+  const UploadOutcome(this.kind, {this.module, this.report, this.message = ''});
 }
 
-/// Study Review (upload + key points) and AI Hub (quiz + rewards) state.
+class FileTooLargeException implements Exception {
+  final String message;
+  const FileTooLargeException(this.message);
+  @override
+  String toString() => message;
+}
+
+class PickedStudyFile {
+  final String name;
+  final String extension;
+  final int size;
+  final Uint8List bytes;
+  const PickedStudyFile(this.name, this.extension, this.size, this.bytes);
+}
+
+/// What a verified upload can give (the user picks one).
+enum UploadReward { seed, fertilizer, shovel }
+
+/// The item actually granted, for the reward sheet and the module screen.
+class UploadRewardResult {
+  final UploadReward kind;
+  final String label; // "Tulip seed", "1 Fertilizer"
+  final String asset; // art shown in the sheet
+  const UploadRewardResult(this.kind, this.label, this.asset);
+}
+
+/// Modules, summaries, quiz history (FR-2.x, FR-3.x).
 class StudyProvider extends ChangeNotifier {
-  StudyProvider(this._s, this._user) {
-    _load();
+  StudyProvider(this._store, this._game);
+  final StorageService _store;
+  final GameProvider _game;
+  VoidCallback? onChanged;
+
+  String? _uid;
+  List<StudyModule> modules = [];
+  List<QuizAttempt> attempts = [];
+  int updatedAt = 0;
+
+  /// FR-2.6 — every uploaded module is kept in "Archived Modules", newest first.
+  List<StudyModule> get allModules => [...modules]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  int get masteredCount => modules.where((m) => m.mastered).length;
+  List<QuizAttempt> get recentAttempts => [...attempts]..sort((a, b) => b.takenAt.compareTo(a.takenAt));
+  StudyModule? byId(String id) {
+    for (final m in modules) {
+      if (m.id == id) return m;
+    }
+    return null;
   }
 
-  static const maxFileBytes = 25 * 1024 * 1024;
-  static const secondsPerQuestion = 30;
-
-  final StorageService _s;
-  final UserProvider _user;
-
-  // ---- library --------------------------------------------------------------
-  final List<StudyModule> _modules = [];
-  final List<QuizResult> _results = [];
-  String? _currentId;
-  bool processing = false;
-  StudyView view = StudyView.review;
-
-  List<StudyModule> get modules => List.unmodifiable(_modules);
-  List<QuizResult> get results => List.unmodifiable(_results);
-
-  StudyModule? get current {
-    if (_modules.isEmpty) return null;
-    return _modules.firstWhere((m) => m.id == _currentId, orElse: () => _modules.first);
-  }
-
-  List<StudyModule> get archived =>
-      _modules.where((m) => m.id != current?.id).toList();
-
-  // ---- quiz session -----------------------------------------------------------
-  QuizPhase phase = QuizPhase.idle;
-  List<QuizQuestion> questions = [];
-  int index = 0;
-  int correctCount = 0;
-  int? selected;
-  bool answered = false;
-  int timeLeft = secondsPerQuestion;
-  final Set<int> flagged = {};
-  final Set<String> _missedTitles = {};
-  QuizResult? lastResult;
-  Timer? _timer;
-
-  QuizQuestion? get question =>
-      phase == QuizPhase.running && index < questions.length ? questions[index] : null;
-
-  int get answeredCount => index + (answered ? 1 : 0);
-  double get progress => questions.isEmpty ? 0 : answeredCount / questions.length;
-  bool get isLast => index >= questions.length - 1;
-  int get runningPercent =>
-      answeredCount == 0 ? 0 : (correctCount * 100 / answeredCount).round();
-
-  // ---- navigation -------------------------------------------------------------
-
-  void showAiHub() {
-    if (view == StudyView.aiHub) return;
-    view = StudyView.aiHub;
+  // ---------------------------------------------------------------------------
+  Future<void> load(String uid) async {
+    _uid = uid;
+    final j = _store.readJson(StorageService.studyKey(uid));
+    if (j != null) {
+      applyJson(j);
+    } else {
+      modules = [];
+      attempts = [];
+    }
     notifyListeners();
   }
 
-  /// Ignored mid-quiz so progress is never lost by an accidental tap.
-  void showReview() {
-    if (phase == QuizPhase.running || view == StudyView.review) return;
-    view = StudyView.review;
+  void unload() {
+    _uid = null;
+    modules = [];
+    attempts = [];
     notifyListeners();
   }
 
-  void selectModule(String id) {
-    if (phase == QuizPhase.running) return;
-    _currentId = id;
-    _s.setString(StorageKeys.studyCurrent, id);
-    if (phase == QuizPhase.finished) phase = QuizPhase.idle;
-    notifyListeners();
+  Map<String, dynamic> toJson() => {
+        'modules': modules.map((m) => m.toJson()).toList(),
+        'attempts': attempts.map((a) => a.toJson()).toList(),
+        'updatedAt': updatedAt,
+      };
+
+  void applyJson(Map<String, dynamic> j) {
+    modules = ((j['modules'] ?? const []) as List).map((e) => StudyModule.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    attempts = ((j['attempts'] ?? const []) as List).map((e) => QuizAttempt.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    updatedAt = (j['updatedAt'] ?? 0) as int;
   }
 
-  // ---- upload -------------------------------------------------------------------
+  Future<void> _save() async {
+    final uid = _uid;
+    if (uid == null) return;
+    updatedAt = DateTime.now().millisecondsSinceEpoch;
+    await _store.writeJson(StorageService.studyKey(uid), toJson());
+    onChanged?.call();
+  }
 
-  Future<UploadOutcome> pickAndAnalyze() async {
-    if (processing) return const UploadOutcome(UploadStatus.cancelled);
+  /// FR-6.5 merge: modules by file hash (newer wins), attempts by id (union).
+  void mergeRemote(Map<String, dynamic> remote, List<Map<String, dynamic>> remoteAttempts) {
+    final r = StudyProvider(_store, _game)..applyJson(remote);
+    final byHash = {for (final m in modules) m.hash: m};
+    for (final m in r.modules) {
+      final mine = byHash[m.hash];
+      if (mine == null || m.updatedAt > mine.updatedAt) byHash[m.hash] = m;
+    }
+    modules = byHash.values.toList();
+    final ids = {for (final a in attempts) a.id: a};
+    for (final raw in remoteAttempts) {
+      final a = QuizAttempt.fromJson(raw);
+      ids.putIfAbsent(a.id, () => a);
+    }
+    for (final a in r.attempts) {
+      ids.putIfAbsent(a.id, () => a);
+    }
+    attempts = ids.values.toList();
+    notifyListeners();
+    _persistOnly();
+  }
 
-    final picked = await FilePicker.platform.pickFiles(
+  Future<void> _persistOnly() async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _store.writeJson(StorageService.studyKey(uid), toJson());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upload pipeline
+  // ---------------------------------------------------------------------------
+  /// FR-2.1 — returns null if the user cancelled.
+  Future<PickedStudyFile?> pickFile() async {
+    // file_picker 13: static API, returns an empty list when cancelled.
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'docx', 'txt'],
-      withData: true,
+      allowedExtensions: TextExtractor.supported,
     );
-    if (picked == null || picked.files.isEmpty) {
-      return const UploadOutcome(UploadStatus.cancelled);
+    if (files.isEmpty) return null;
+    final f = files.first;
+    // Check the size before loading the file, so a huge file never fills memory.
+    final length = await f.length() ?? 0;
+    if (length > GameRules.maxFileBytes) {
+      throw FileTooLargeException('This file is ${fmtBytes(length)}. The limit is 25 MB.');
     }
-
-    final file = picked.files.first;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      return const UploadOutcome(UploadStatus.unreadable, 'Could not read that file.');
-    }
-    if (file.size > maxFileBytes) {
-      return const UploadOutcome(UploadStatus.tooBig, 'Files must be 25 MB or smaller.');
-    }
-
-    final id = '${file.name}_${file.size}';
-    final existing = _modules.where((m) => m.id == id);
-    if (existing.isNotEmpty) {
-      selectModule(id);
-      return const UploadOutcome(
-          UploadStatus.duplicate, 'You already uploaded this file. Opened it for you.');
-    }
-
-    processing = true;
-    notifyListeners();
-    try {
-      final text = await TextExtractor.extract(file.name, bytes);
-      final result = StudyAnalyzer.analyze(text);
-      if (result.keyPoints.length < 2) {
-        return const UploadOutcome(
-          UploadStatus.notEnoughContent,
-          'Not enough readable text found. Scanned PDFs (images) are not supported yet.',
-        );
-      }
-
-      final module = StudyModule(
-        id: id,
-        fileName: file.name,
-        extension: file.extension?.toLowerCase() ?? '',
-        sizeBytes: file.size,
-        keyPoints: result.keyPoints,
-        facts: result.facts,
-        vocab: result.vocab,
-        createdAt: DateTime.now(),
-      );
-      _modules.insert(0, module);
-      _currentId = id;
-      _user.addCoins(uploadReward);
-      await _persistModules();
-      await _s.setString(StorageKeys.studyCurrent, id);
-      return const UploadOutcome(UploadStatus.success);
-    } on UnsupportedFileException catch (e) {
-      return UploadOutcome(UploadStatus.unreadable, e.message);
-    } catch (_) {
-      return const UploadOutcome(
-          UploadStatus.unreadable, 'Something went wrong reading that file.');
-    } finally {
-      processing = false;
-      notifyListeners();
-    }
+    final bytes = await f.readAsBytes();
+    final name = f.name;
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return PickedStudyFile(name, ext, bytes.length, bytes);
   }
 
-  /// Plain-text summary used by "Download Summary Sheet".
-  String summarySheet(StudyModule m) {
+  Future<UploadOutcome> process(PickedStudyFile file) async {
+    if (!TextExtractor.supported.contains(file.extension)) {
+      return const UploadOutcome(UploadKind.rejected, message: 'Unsupported file type. Please upload a PDF, DOCX or TXT file.');
+    }
+    if (file.size > GameRules.maxFileBytes) {
+      return UploadOutcome(UploadKind.rejected, message: 'This file is ${fmtBytes(file.size)}. The limit is 25 MB.');
+    }
+
+    // FR-2.5 duplicate check — same bytes = same module, no second reward.
+    final hash = sha256.convert(file.bytes).toString();
+    for (final m in modules) {
+      if (m.hash == hash) {
+        if (m.archived) {
+          m.archived = false;
+          m.updatedAt = GameClock.nowMs();
+          await _save();
+          notifyListeners();
+        }
+        return UploadOutcome(UploadKind.duplicate, module: m,
+            message: 'You already uploaded this file. Opening the existing module — rewards are given once per file.');
+      }
+    }
+
+    final String text;
+    try {
+      text = await TextExtractor.extract(file.bytes, file.extension);
+    } on ExtractionException catch (e) {
+      return UploadOutcome(UploadKind.rejected, message: e.message);
+    } catch (_) {
+      return const UploadOutcome(UploadKind.rejected, message: 'This file could not be read.');
+    }
+
+    final keyPoints = await compute(TextAnalyzer.analyze, text);
+    final report = ModuleValidator.validate(
+      text: text,
+      keyPoints: keyPoints,
+      fileBytes: file.size,
+      extension: file.extension,
+    );
+    if (!report.accepted) {
+      return UploadOutcome(UploadKind.rejected, report: report, message: report.rejectReason ?? 'File rejected.');
+    }
+
+    final now = GameClock.nowMs();
+    final module = StudyModule(
+      id: newId(),
+      hash: hash,
+      title: TextAnalyzer.guessTitle(text, file.name),
+      fileName: file.name,
+      fileType: file.extension,
+      fileBytes: file.size,
+      wordCount: TextAnalyzer.words(text).length,
+      keyPoints: keyPoints,
+      createdAt: now,
+      verified: report.verified,
+    );
+    modules.add(module);
+    await _save();
+    if (report.verified) _game.recordVerifiedUpload();
+    notifyListeners();
+    return UploadOutcome(UploadKind.accepted, module: module, report: report);
+  }
+
+  /// Verified upload reward: a random seed, a fertilizer or a shovel — once
+  /// per unique file. Returns null if the module has no reward to claim
+  /// (not verified, or already claimed — e.g. a double tap).
+  UploadRewardResult? claimUploadReward(StudyModule m, UploadReward choice) {
+    if (!m.verified || m.rewardClaimed) return null;
+    // Mark first so a second tap can never grant twice.
+    m.rewardClaimed = true;
+    m.rewardChoice = choice.name;
+    m.updatedAt = GameClock.nowMs();
+    final UploadRewardResult result;
+    switch (choice) {
+      case UploadReward.seed:
+        final id = _game.grantRandomSeed();
+        m.rewardItem = id;
+        final f = Flower.of(id);
+        result = UploadRewardResult(choice, '${f.name} seed', f.seedAsset);
+      case UploadReward.fertilizer:
+        _game.grantTool(ToolKind.fertilizer, GameRules.uploadRewardFertilizers);
+        result = UploadRewardResult(choice, '${GameRules.uploadRewardFertilizers} Fertilizer', ToolDef.of(ToolKind.fertilizer).asset);
+      case UploadReward.shovel:
+        _game.grantTool(ToolKind.shovel, GameRules.uploadRewardShovels);
+        result = UploadRewardResult(choice, '${GameRules.uploadRewardShovels} Shovel', ToolDef.of(ToolKind.shovel).asset);
+    }
+    _save();
+    notifyListeners();
+    return result;
+  }
+
+  /// Text for an already-claimed reward ("Random seed: Tulip", "1 Fertilizer").
+  static String rewardLabel(StudyModule m) => switch (m.rewardChoice) {
+        'seed' => m.rewardItem == null ? 'Random seed' : 'Random seed: ${Flower.of(m.rewardItem!).name}',
+        'fertilizer' => '${GameRules.uploadRewardFertilizers} Fertilizer',
+        'shovel' => '${GameRules.uploadRewardShovels} Shovel',
+        'coins' => 'Coins', // saves from before the reward change
+        'xp' => 'XP',
+        _ => 'Claimed',
+      };
+
+  // ---------------------------------------------------------------------------
+  void rename(StudyModule m, String title) {
+    m.title = title.trim().isEmpty ? m.title : title.trim();
+    m.updatedAt = GameClock.nowMs();
+    _save();
+    notifyListeners();
+  }
+
+  void setArchived(StudyModule m, bool v) {
+    m.archived = v;
+    m.updatedAt = GameClock.nowMs();
+    _save();
+    notifyListeners();
+  }
+
+  /// FR-3.7 / FR-3.8 / FR-3.6
+  QuizAttempt recordAttempt(StudyModule m, {required int correct, required int total, required int flagged}) {
+    final percent = total == 0 ? 0 : (correct * 100 / total).round();
+    // Coins are earned on the FIRST attempt of a module only. Retakes are
+    // free practice (they still update the best score and "Mastered").
+    final coins = m.attempts == 0 ? GameRules.quizCoins(percent) : 0;
+    m.attempts++;
+    if (percent > m.bestScore) m.bestScore = percent;
+    m.updatedAt = GameClock.nowMs();
+    final a = QuizAttempt(
+      id: newId(),
+      moduleId: m.id,
+      moduleHash: m.hash,
+      moduleTitle: m.title,
+      attempt: m.attempts,
+      correct: correct,
+      total: total,
+      coins: coins,
+      takenAt: GameClock.nowMs(),
+      flagged: flagged,
+    );
+    attempts.add(a);
+    _save();
+    _game.recordQuiz(percent: percent, coinsEarned: coins, masteredModules: masteredCount);
+    notifyListeners();
+    return a;
+  }
+
+  /// FR-2.7 — summary sheet as .txt
+  String summaryText(StudyModule m) {
     final b = StringBuffer()
-      ..writeln('StudyFlora Summary Sheet')
-      ..writeln(m.displayName)
-      ..writeln('=' * 32)
+      ..writeln('STUDY FLORA — KEY POINTS SUMMARY')
+      ..writeln('=' * 36)
+      ..writeln('Module: ${m.title}')
+      ..writeln('Source file: ${m.fileName}')
+      ..writeln('Best score: ${m.bestScore < 0 ? 'Not taken yet' : '${m.bestScore}%'}')
+      ..writeln('Exported: ${fmtDate(DateTime.now())}')
       ..writeln();
     for (var i = 0; i < m.keyPoints.length; i++) {
-      b.writeln('${i + 1}. ${m.keyPoints[i].title}');
-      b.writeln('   ${m.keyPoints[i].detail}');
-      b.writeln();
+      b
+        ..writeln('${i + 1}. ${m.keyPoints[i].title}')
+        ..writeln('   ${m.keyPoints[i].explanation}')
+        ..writeln();
     }
+    b.writeln('Study responsibly, grow together 🌱');
     return b.toString();
   }
 
-  // ---- quiz -----------------------------------------------------------------------
-
-  /// Returns false if the module has too little material for a quiz.
-  bool startQuiz() {
-    final m = current;
-    if (m == null) return false;
-    final qs = QuizGenerator.generate(m);
-    if (qs.length < 2) return false;
-
-    questions = qs;
-    index = 0;
-    correctCount = 0;
-    flagged.clear();
-    _missedTitles.clear();
-    lastResult = null;
-    phase = QuizPhase.running;
-    _resetQuestion();
-    notifyListeners();
-    return true;
-  }
-
-  void answer(int option) {
-    if (phase != QuizPhase.running || answered) return;
-    _lock(option);
-  }
-
-  void toggleFlag() {
-    if (phase != QuizPhase.running) return;
-    flagged.contains(index) ? flagged.remove(index) : flagged.add(index);
-    notifyListeners();
-  }
-
-  void next() {
-    if (phase != QuizPhase.running || !answered) return;
-    if (isLast) {
-      _finish();
-    } else {
-      index++;
-      _resetQuestion();
-      notifyListeners();
-    }
-  }
-
-  void retry() {
-    phase = QuizPhase.idle;
-    startQuiz();
-  }
-
-  void backToIdle() {
-    phase = QuizPhase.idle;
-    notifyListeners();
-  }
-
-  List<FlashCard> flashcards() {
-    final m = current;
-    if (m == null) return const [];
-    final priority = <String>{...m.weakTitles, ..._missedTitles};
-    for (final i in flagged) {
-      if (i < questions.length && questions[i].keyTitle.isNotEmpty) {
-        priority.add(questions[i].keyTitle);
-      }
-    }
-    return QuizGenerator.flashcards(m, priority);
-  }
-
-  // ---- internals --------------------------------------------------------------------
-
-  void _resetQuestion() {
-    _timer?.cancel();
-    selected = null;
-    answered = false;
-    timeLeft = secondsPerQuestion;
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (answered) {
-        t.cancel();
-        return;
-      }
-      timeLeft--;
-      if (timeLeft <= 0) {
-        timeLeft = 0;
-        _lock(-1); // timed out counts as wrong
-      } else {
-        notifyListeners();
-      }
-    });
-  }
-
-  void _lock(int option) {
-    _timer?.cancel();
-    selected = option;
-    answered = true;
-    final q = questions[index];
-    if (option == q.correctIndex) {
-      correctCount++;
-    } else if (q.keyTitle.isNotEmpty) {
-      _missedTitles.add(q.keyTitle);
-    }
-    notifyListeners();
-  }
-
-  void _finish() {
-    _timer?.cancel();
-    final m = current!;
-    final coins = coinsForScore(correctCount, questions.length);
-    final result = QuizResult(
-      moduleId: m.id,
-      moduleName: m.displayName,
-      attempt: m.attempts + 1,
-      correct: correctCount,
-      total: questions.length,
-      coins: coins,
-      at: DateTime.now(),
+  Future<bool> exportSummary(StudyModule m) async {
+    final safe = m.title.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '').trim().replaceAll(' ', '_');
+    final saved = await FilePicker.saveFile(
+      dialogTitle: 'Save summary sheet',
+      fileName: '${safe.isEmpty ? 'StudyFlora_Summary' : safe}_summary.txt',
+      bytes: Uint8List.fromList(utf8.encode(summaryText(m))),
     );
-
-    m.attempts++;
-    if (result.percent > m.bestPercent) m.bestPercent = result.percent;
-    m.weakTitles = _missedTitles.toList();
-
-    _results.insert(0, result);
-    if (_results.length > 30) _results.removeRange(30, _results.length);
-    lastResult = result;
-    phase = QuizPhase.finished;
-
-    _user.addCoins(coins);
-    _persistModules();
-    _persistResults();
-    notifyListeners();
-  }
-
-  void _load() {
-    final rawModules = _s.getStringList(StorageKeys.studyModules) ?? const [];
-    for (final r in rawModules) {
-      try {
-        _modules.add(StudyModule.fromJson(jsonDecode(r) as Map<String, dynamic>));
-      } catch (_) {/* skip corrupt entry */}
-    }
-    final rawResults = _s.getStringList(StorageKeys.quizResults) ?? const [];
-    for (final r in rawResults) {
-      try {
-        _results.add(QuizResult.fromJson(jsonDecode(r) as Map<String, dynamic>));
-      } catch (_) {}
-    }
-    final saved = _s.getString(StorageKeys.studyCurrent, '');
-    _currentId = saved.isEmpty ? null : saved;
-  }
-
-  Future<void> _persistModules() =>
-      _s.setStringList(StorageKeys.studyModules, _modules.map((m) => jsonEncode(m.toJson())).toList());
-
-  Future<void> _persistResults() =>
-      _s.setStringList(StorageKeys.quizResults, _results.map((r) => jsonEncode(r.toJson())).toList());
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    return saved != null;
   }
 }

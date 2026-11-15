@@ -1,34 +1,64 @@
-name: studyflora
-description: StudyFlora - a gamified flower-garden study app.
+name: mobile_application_project
+description: "Study Flora — a gamified study and quiz reviewer app for UCU students."
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.6.0 <4.0.0'
+  sdk: ^3.5.0
 
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management (SRS §5)
   provider: ^6.1.2
+
+  # Local storage (SRS FR-6.1)
   shared_preferences: ^2.3.2
-  google_fonts: ^6.2.1
-  file_picker: ^8.1.2
-  syncfusion_flutter_pdf: ^26.2.14
-  archive: ^3.6.1
-  path_provider: ^2.1.4
-  open_filex: ^4.5.0
-  url_launcher: ^6.3.0
+
+  # Online account + cloud sync (SRS FR-1.x, FR-6.x)
+  supabase_flutter: ^2.8.0
+  connectivity_plus: ">=6.1.0 <8.0.0"
+
+  # File handling (SRS FR-2.x)
+  file_picker: ^13.3.2
+  archive: ">=3.6.1 <5.0.0"
+  syncfusion_flutter_pdf: ">=27.1.48 <40.0.0"
   crypto: ^3.0.5
+
+  # Sound effects + background music
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
+
   assets:
-    - assets/images/
-    - assets/flowers/
+    - assets/plants/
     - assets/avatars/
+    - assets/borders/
     - assets/tools/
+    - assets/images/
+    - assets/sounds/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-400.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-500.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-600.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-700.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-800.ttf
+          weight: 800
+    - family: DMSerif
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Regular.ttf
