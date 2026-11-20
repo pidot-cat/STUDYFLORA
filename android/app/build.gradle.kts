@@ -31,11 +31,23 @@ android {
         versionName = flutter.versionName
     }
 
+    // One shared signing key (android/app/studyflora-shared.keystore) so APKs built
+    // on any PC or on GitHub can update each other without uninstalling.
+    signingConfigs {
+        create("shared") {
+            storeFile = file("studyflora-shared.keystore")
+            storePassword = "android"
+            keyAlias = "studyflora"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 }
