@@ -23,6 +23,43 @@ class ValidationReport {
 }
 
 class ModuleValidator {
+  /// "Original content" check that works for any file length.
+  ///
+  /// The old check (unique words ÷ all words) drops as a file gets longer, so
+  /// a bigger module — e.g. Module 2 that repeats Module 1's topics and adds
+  /// more — was wrongly marked "Too repetitive". This uses:
+  ///  * vocabulary variety inside 100-word windows (same for short and long
+  ///    files; real notes score ≈0.65–0.75, copy-pasted filler < 0.3), and
+  ///  * how many sentences are exact repeats of earlier ones (the same text
+  ///    pasted twice in one file).
+  static bool _isOriginal(String text, List<String> words) {
+    final w = [for (final x in words) x.toLowerCase()];
+    if (w.isEmpty) return false;
+    const window = 100;
+    double variety;
+    if (w.length <= window) {
+      variety = w.toSet().length / w.length;
+    } else {
+      var sum = 0.0, n = 0;
+      for (var i = 0; i + window <= w.length; i += 10) {
+        sum += w.sublist(i, i + window).toSet().length / window;
+        n++;
+      }
+      variety = sum / n;
+    }
+    final sentences = [
+      for (final s in TextAnalyzer.sentences(text))
+        if (s.split(' ').length >= 4) s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim(),
+    ];
+    final seen = <String>{};
+    var repeats = 0;
+    for (final s in sentences) {
+      if (!seen.add(s)) repeats++;
+    }
+    final repeatRatio = sentences.isEmpty ? 0.0 : repeats / sentences.length;
+    return variety >= 0.40 && repeatRatio < 0.5;
+  }
+
   static const minWords = 100;
   static const minKeyPointsForReward = 3;
   static const minSentences = 6;
@@ -45,8 +82,7 @@ class ModuleValidator {
     final sentences = TextAnalyzer.sentences(text).length;
     final lower = text.toLowerCase();
     final cues = _academicCues.where(lower.contains).length;
-    final uniq = words.map((w) => w.toLowerCase()).toSet().length;
-    final diversity = wc == 0 ? 0.0 : uniq / wc;
+    final original = _isOriginal(text, words);
 
     final typeOk = ['pdf', 'docx', 'txt'].contains(extension.toLowerCase());
     final sizeOk = fileBytes <= GameRules.maxFileBytes;
@@ -60,7 +96,7 @@ class ModuleValidator {
       CheckItem('Complete sentences', '$sentences found', sentences >= minSentences),
       CheckItem('Key points', '${keyPoints.length} found', keyPoints.length >= minKeyPointsForReward),
       CheckItem('Lesson structure', structured ? 'Looks like notes' : 'Not lesson-like', structured),
-      CheckItem('Original content', diversity >= 0.25 ? 'Not repetitive' : 'Too repetitive', diversity >= 0.25),
+      CheckItem('Original content', original ? 'Not repetitive' : 'Too repetitive', original),
     ];
 
     String? reason;

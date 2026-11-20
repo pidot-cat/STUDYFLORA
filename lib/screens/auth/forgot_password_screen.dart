@@ -168,7 +168,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           showBack: true,
           icon: Icons.mark_email_unread_outlined,
           title: 'Enter Your Code',
-          subtitle: 'We sent a reset code to $email. Type it below.',
+          subtitle: 'We sent a 6-digit reset code to $email. Type it below.',
           children: [
             stepLabel(2),
             if (_error != null) InlineAlert(message: _error!),

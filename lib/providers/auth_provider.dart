@@ -76,6 +76,20 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// FR-1.3 (confirmation happens in the UI).
+  /// Permanently deletes the signed-in account (cloud and this phone).
+  Future<void> deleteAccount(String password) async {
+    final u = user;
+    if (u == null) return;
+    await service.deleteAccount(u, password);
+    // Nothing is synced back up: the account is gone.
+    user = null;
+    _game.unload();
+    _study.unload();
+    _sync.unload();
+    await service.clearLocalData(u);
+    notifyListeners();
+  }
+
   Future<void> signOut() async {
     if (user != null && !user!.isLocal) {
       try {

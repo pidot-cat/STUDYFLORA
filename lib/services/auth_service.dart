@@ -140,7 +140,7 @@ class AuthService {
 
   Future<void> _verify(String email, String code, OtpType type) async {
     final token = code.replaceAll(RegExp(r'\s'), '');
-    if (!RegExp(r'^\d{6,8}$').hasMatch(token)) throw AuthFailure('Enter the code from your email.');
+    if (!RegExp(r'^\d{6}$').hasMatch(token)) throw AuthFailure('Enter the 6-digit code from your email.');
     await _guard(() => _sb.auth.verifyOTP(type: type, email: email.trim(), token: token));
   }
 
@@ -240,6 +240,60 @@ class AuthService {
       }
     }
     return AppUser(id: user.id, email: user.email, displayName: name.trim(), isLocal: user.isLocal);
+  }
+
+  /// Settings → Delete Account. Checks the password again, then permanently
+  /// deletes the account and all its data. On Supabase this calls the
+  /// `sf_delete_my_account` database function (supabase/schema.sql), which
+  /// removes the user's game/study data, quiz history and the login itself.
+  Future<void> deleteAccount(AppUser user, String password) async {
+    if (password.isEmpty) throw AuthFailure('Please enter your password.');
+    await requireOnline();
+    if (usesSupabase) {
+      try {
+        await _sb.auth.signInWithPassword(email: user.email, password: password);
+      } on AuthException catch (e) {
+        final m = _friendly(e.message);
+        throw AuthFailure(m.contains('email or password') ? 'Incorrect password.' : m);
+      } catch (_) {
+        throw AuthFailure(Net.offlineMessage);
+      }
+      try {
+        await _sb.rpc('sf_delete_my_account');
+      } on PostgrestException catch (e) {
+        final l = e.message.toLowerCase();
+        if (l.contains('could not find') || l.contains('does not exist')) {
+          throw AuthFailure('Account deletion is not set up on the server yet. Please try again later.');
+        }
+        throw AuthFailure('Your account could not be deleted. Please try again.');
+      } catch (e) {
+        throw AuthFailure(Net.isNetworkError(e) ? Net.offlineMessage : 'Your account could not be deleted. Please try again.');
+      }
+      // The login no longer exists on the server: just clear this phone.
+      try {
+        await _sb.auth.signOut(scope: SignOutScope.local);
+      } catch (_) {}
+      return;
+    }
+    final accounts = _localAccounts();
+    final key = user.email.toLowerCase();
+    final a = accounts[key];
+    if (a == null || a['pw'] != _hash(password)) throw AuthFailure('Incorrect password.');
+    accounts.remove(key);
+    await _store.writeJson(_localAccountsKey, accounts);
+    await _store.remove(_localSessionKey);
+  }
+
+  /// Removes everything this phone stored for [user] (garden, modules, quiz
+  /// history, sync state and unsent feedback).
+  Future<void> clearLocalData(AppUser user) async {
+    await _store.remove(StorageService.gameKey(user.id));
+    await _store.remove(StorageService.studyKey(user.id));
+    await _store.remove(StorageService.syncKey(user.id));
+    final q = _store.readJson('sf.feedback.queue');
+    final items = (q?['items'] as List?) ?? const [];
+    final keep = [for (final i in items) if ((i as Map)['email'] != user.email) i];
+    await _store.writeJson('sf.feedback.queue', {'items': keep});
   }
 
   Future<void> signOut() async {

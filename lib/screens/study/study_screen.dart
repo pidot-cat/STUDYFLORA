@@ -332,7 +332,7 @@ void showRewardsInfo(BuildContext context) {
           Text('Coins depend on your score the first time you take a module’s quiz. Retakes are free practice with no coins.', style: ctx.tt.bodySmall),
           const SizedBox(height: 6),
           for (final (score, coins) in const [
-            ('100%', 100), ('90–99%', 75), ('80–89%', 50), ('70–79%', 30), ('60–69%', 20), ('50–59%', 10), ('Below 50%', 5),
+            ('8–10 correct', 50), ('5–7 correct', 30), ('0–4 correct', 5),
           ])
             row(score, coins),
           const SizedBox(height: 12),

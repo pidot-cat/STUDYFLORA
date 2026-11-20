@@ -27,7 +27,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   int _rating = 0;
   bool _busy = false;
   bool _done = false;
-  bool _sent = false;
+  FeedbackResult _result = FeedbackResult.sent;
 
   @override
   void dispose() {
@@ -41,12 +41,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     setState(() => _busy = true);
     final email = context.read<AuthProvider>().user?.email;
     final store = await StorageService.create();
-    final sent = await FeedbackService(store).submit(category: _category, rating: _rating, message: _msg.text, email: email);
+    final result = await FeedbackService(store).submit(category: _category, rating: _rating, message: _msg.text, email: email);
     if (!mounted) return;
     setState(() {
       _busy = false;
       _done = true;
-      _sent = sent;
+      _result = result;
     });
   }
 
@@ -75,9 +75,15 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
           Text('Thank you!', style: context.tt.titleLarge),
           const SizedBox(height: 6),
           Text(
-            _sent
-                ? 'Your feedback was sent to the Study Flora team. It helps us make the app better.'
-                : 'Your feedback is saved on this phone and will be sent the next time you’re online.',
+            switch (_result) {
+              FeedbackResult.sent => 'Your feedback was sent to the Study Flora team. It helps us make the app better.',
+              FeedbackResult.offline =>
+                'You’re offline right now, so your feedback is saved on this phone. It will be sent automatically when you’re back online.',
+              FeedbackResult.notSignedIn =>
+                'Your feedback is saved on this phone. It will be sent automatically the next time you log in.',
+              FeedbackResult.serverError =>
+                'We couldn’t reach the feedback server right now, so your feedback is saved on this phone. The app will send it again automatically.',
+            },
             style: context.tt.bodyMedium?.copyWith(color: c.muted),
             textAlign: TextAlign.center,
           ),

@@ -69,13 +69,11 @@ class GameRules {
   static const masteredPercent = 60;
 
   /// FR-3.6 coin table.
+  /// First-attempt quiz coins (10 questions): 8–10 correct → 50,
+  /// 5–7 correct → 30, 0–4 correct → 5.
   static int quizCoins(int percent) {
-    if (percent >= 100) return 100;
-    if (percent >= 90) return 75;
     if (percent >= 80) return 50;
-    if (percent >= 70) return 30;
-    if (percent >= 60) return 20;
-    if (percent >= 50) return 10;
+    if (percent >= 50) return 30;
     return 5;
   }
 }

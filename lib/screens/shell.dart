@@ -8,7 +8,9 @@ import '../core/theme.dart';
 import '../models/cosmetics.dart';
 import '../providers/feedback_bus.dart';
 import '../providers/game_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/feedback_service.dart';
+import '../services/garden_notifications.dart';
 import '../services/sound_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/common.dart';
@@ -37,7 +39,7 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _visited = <int>{0};
   GameProvider? _game;
 
@@ -55,12 +57,32 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     celebrationHold.addListener(_maybeCelebrate);
+    WidgetsBinding.instance.addObserver(this);
+    // Garden reminders only show while the app is closed.
+    final notify = context.read<SettingsProvider>().notifications;
+    GardenNotifications.instance.cancelAll().then((_) {
+      if (notify) GardenNotifications.instance.requestPermission();
+    });
     // Send any feedback that was written while offline.
     StorageService.create().then((s) => FeedbackService(s).flush()).catchError((_) => false);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      final g = _game;
+      if (g != null) {
+        GardenNotifications.instance.schedule(g, enabled: context.read<SettingsProvider>().notifications);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      GardenNotifications.instance.cancelAll();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    GardenNotifications.instance.cancelAll(); // logged out / account deleted
     _game?.removeListener(_maybeCelebrate);
     celebrationHold.removeListener(_maybeCelebrate);
     super.dispose();

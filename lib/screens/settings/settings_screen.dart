@@ -7,9 +7,11 @@ import '../../models/cosmetics.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../services/garden_notifications.dart';
 import '../../widgets/common.dart';
 import '../../widgets/profile_widgets.dart';
 import '../../widgets/sheets.dart';
+import '../auth/auth_widgets.dart';
 import '../shell.dart';
 import 'account_screen.dart';
 import 'badges_screen.dart';
@@ -96,9 +98,12 @@ class SettingsScreen extends StatelessWidget {
                 _ToggleRow(
                   icon: Icons.notifications_none_rounded,
                   title: 'Notifications',
-                  subtitle: 'Reward and achievement pop-ups',
+                  subtitle: 'Pop-ups and garden reminders',
                   value: s.notifications,
-                  onChanged: s.setNotifications,
+                  onChanged: (v) {
+                    s.setNotifications(v);
+                    if (v) GardenNotifications.instance.requestPermission();
+                  },
                 ),
                 _ToggleRow(icon: Icons.dark_mode_outlined, title: 'Dark Mode', subtitle: 'Easier on the eyes at night', value: s.darkMode, onChanged: s.setDark),
               ]),
@@ -118,6 +123,13 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: 'Sign out of your account',
                   danger: true,
                   onTap: () => _logout(context),
+                ),
+                _NavRow(
+                  leading: IconTile(Icons.delete_forever_outlined, size: 44, color: c.danger, bg: c.dangerSoft),
+                  title: 'Delete Account',
+                  subtitle: 'Permanently remove your account and data',
+                  danger: true,
+                  onTap: () => _deleteAccount(context),
                 ),
               ]),
 
@@ -150,6 +162,20 @@ class SettingsScreen extends StatelessWidget {
         ),
       ]),
     );
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = context.read<NavState>();
+    final deleted = await showSfSheet<bool>(context: context, builder: (_) => const _DeleteAccountSheet());
+    if (deleted != true) return;
+    nav.go(0);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        content: Text('Your account has been deleted.'),
+        margin: EdgeInsets.fromLTRB(16, 0, 16, 24),
+      ));
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -236,6 +262,96 @@ class _NavRow extends StatelessWidget {
           Icon(Icons.chevron_right_rounded, color: c.muted),
         ]),
       ),
+    );
+  }
+}
+
+/// Confirms Delete Account with the user's password. Pops `true` once the
+/// account is gone.
+class _DeleteAccountSheet extends StatefulWidget {
+  const _DeleteAccountSheet();
+  @override
+  State<_DeleteAccountSheet> createState() => _DeleteAccountSheetState();
+}
+
+class _DeleteAccountSheetState extends State<_DeleteAccountSheet> {
+  final _pw = TextEditingController();
+  bool _understood = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _pw.dispose();
+    super.dispose();
+  }
+
+  Future<void> _delete() async {
+    if (_busy || !_understood) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await context.read<AuthProvider>().deleteAccount(_pw.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sf;
+    final email = context.select<AuthProvider, String>((a) => a.user?.email ?? '');
+    Widget item(IconData icon, String text) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            Icon(icon, size: 18, color: c.danger),
+            const SizedBox(width: 10),
+            Expanded(child: Text(text, style: context.tt.bodyMedium)),
+          ]),
+        );
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        const SheetHeader(title: 'Delete Account', icon: Icons.delete_forever_outlined),
+        Text('This permanently deletes $email. It cannot be undone.', style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        item(Icons.local_florist_outlined, 'Your garden, seeds, tools, coins and XP'),
+        item(Icons.menu_book_outlined, 'Your uploaded modules and quiz history'),
+        item(Icons.emoji_events_outlined, 'Your badges and avatar borders'),
+        item(Icons.person_off_outlined, 'Your login — you will need to sign up again'),
+        const SizedBox(height: 10),
+        if (_error != null) InlineAlert(message: _error!),
+        const FieldLabel('Enter your password to confirm', icon: Icons.lock_outline_rounded),
+        PasswordField(controller: _pw, hint: 'Your password', onSubmitted: (_) => _delete()),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          value: _understood,
+          onChanged: _busy ? null : (v) => setState(() => _understood = v ?? false),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          activeColor: c.danger,
+          title: Text('I understand this cannot be undone.', style: context.tt.bodyMedium),
+        ),
+        const SizedBox(height: 8),
+        PrimaryButton(
+          label: 'Delete My Account',
+          icon: Icons.delete_forever_rounded,
+          color: c.danger,
+          busy: _busy,
+          onTap: _understood ? _delete : null,
+        ),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+          child: Text('Cancel', style: TextStyle(color: c.muted, fontWeight: FontWeight.w600)),
+        ),
+      ]),
     );
   }
 }

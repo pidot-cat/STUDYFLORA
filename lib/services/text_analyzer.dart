@@ -11,6 +11,10 @@ import '../models/study.dart';
 /// explanation.
 class TextAnalyzer {
   static const maxPoints = 8;
+
+  /// Longer files (e.g. a module that also covers an earlier module's topics)
+  /// keep more key points: 8 for a normal lesson, up to 20 for big modules.
+  static int maxPointsFor(int wordCount) => (wordCount / 180).round().clamp(maxPoints, 20);
   static const _maxExplanation = 320;
 
   static const stopwords = {
@@ -234,14 +238,33 @@ class TextAnalyzer {
     RegExp(r'^(?:(?:A|An|The)\s+)?([A-Z][\w\-()/]*(?:\s+[\w\-()/]+){0,4}?)\s+(?:is|are)\s+((?:a|an|the|one|any)\s+.+)$'),
   ];
 
+  static final _citationCue = RegExp(
+    r'(https?://|www\.|bit\.ly|isbn|doi|retrieved|et al\.?|edition|press|publish|journal|vol\.|pp\.|prepared by|faculty|university|college|library|\(\d{4}\)|\b(19|20)\d{2}\b)',
+    caseSensitive: false,
+  );
+
+  /// A line from a reference list: a citation, a link, or the short
+  /// author / "Prepared by" lines that follow it.
+  static bool _isReferenceEntry(({String? heading, String text}) b) {
+    final t = (b.heading ?? b.text).trim();
+    if (t.isEmpty) return true;
+    if (_citationCue.hasMatch(t)) return true;
+    // "Bell, Judith." / "Kendall, Kenneth and Kendall, Julie"
+    if (RegExp(r'^[A-Z][A-Za-z\-]+, [A-Z]').hasMatch(t)) return true;
+    // Names and titles in capitals ("ARNEL B. OCAY, DIT").
+    if (t.split(' ').length <= 8 && t == t.toUpperCase()) return true;
+    return false;
+  }
+
   static List<KeyPoint> analyze(String raw) {
     final bs = blocks(raw);
+    final limit = maxPointsFor(words(raw).length);
     final points = <KeyPoint>[];
     final seen = <String>{};
     final seenExplanations = <String>{};
 
     bool add(String title, String explanation) {
-      if (points.length >= maxPoints) return false;
+      if (points.length >= limit) return false;
       title = _tidyTitle(title.replaceFirst(_leadingArticle, '').replaceAll(RegExp(r'\s*\([^)]*\)'), ''));
       final rawExplanation = explanation
           .replaceAll(RegExp(r'(?<=\s)[a-h]\.(?=\s|$)'), '') // stray list letters from another column
@@ -263,12 +286,19 @@ class TextAnalyzer {
     // Skip learning-objective lists: an intro line ending with ":" and the
     // bullets that follow it are goals, not concepts.
     final skip = <int>{};
-    // Everything after a "References" heading is bibliography.
-    final refAt = bs.indexWhere((b) => _referencesHeading.hasMatch((b.heading ?? b.text).trim()));
-    if (refAt >= 0) {
-      for (var i = refAt; i < bs.length; i++) {
-        skip.add(i);
+    // A "References" heading starts a bibliography. Skip it and the citation
+    // entries under it, but start reading again at the next real section, so a
+    // file that joins several lessons (each with its own references) is still
+    // analyzed past the first reference list.
+    for (var i = 0; i < bs.length; i++) {
+      if (!_referencesHeading.hasMatch((bs[i].heading ?? bs[i].text).trim())) continue;
+      skip.add(i);
+      var j = i + 1;
+      while (j < bs.length && _isReferenceEntry(bs[j])) {
+        skip.add(j);
+        j++;
       }
+      i = j - 1;
     }
     for (var i = 0; i < bs.length; i++) {
       final t = bs[i].heading ?? bs[i].text;

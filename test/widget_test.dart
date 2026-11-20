@@ -45,14 +45,13 @@ void main() {
     expect(p.isReadyAt(4 * h), isTrue);
   });
 
-  test('quiz coin table matches FR-3.6', () {
-    expect(GameRules.quizCoins(100), 100);
-    expect(GameRules.quizCoins(95), 75);
-    expect(GameRules.quizCoins(85), 50);
-    expect(GameRules.quizCoins(72), 30);
-    expect(GameRules.quizCoins(60), 20);
-    expect(GameRules.quizCoins(55), 10);
-    expect(GameRules.quizCoins(10), 5);
+  test('quiz coin table: 8-10 = 50, 5-7 = 30, 0-4 = 5', () {
+    expect(GameRules.quizCoins(100), 50);
+    expect(GameRules.quizCoins(80), 50);
+    expect(GameRules.quizCoins(70), 30);
+    expect(GameRules.quizCoins(50), 30);
+    expect(GameRules.quizCoins(40), 5);
+    expect(GameRules.quizCoins(0), 5);
   });
 
   test('analyzer finds "Term: explanation" key points', () {

@@ -17,6 +17,7 @@ import 'services/sound_service.dart';
 import 'services/storage_service.dart';
 import 'services/sync_service.dart';
 import 'widgets/network_banner.dart';
+import 'widgets/tap_sound.dart';
 
 class StudyFloraApp extends StatefulWidget {
   const StudyFloraApp({super.key, required this.store});
@@ -37,11 +38,18 @@ class _StudyFloraAppState extends State<StudyFloraApp> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Garden music belongs to the signed-in app only: it stops on the login,
+    // sign-up and forgot-password screens and starts again after logging in.
+    auth.addListener(_syncMusic);
+    _syncMusic();
   }
+
+  void _syncMusic() => SoundService.instance.setSignedIn(auth.signedIn);
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    auth.removeListener(_syncMusic);
     super.dispose();
   }
 
@@ -81,7 +89,7 @@ class _StudyFloraAppState extends State<StudyFloraApp> with WidgetsBindingObserv
               final mq = MediaQuery.of(context);
               return MediaQuery(
                 data: mq.copyWith(textScaler: mq.textScaler.clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15)),
-                child: NetworkBanner(child: child!),
+                child: TapSound(child: NetworkBanner(child: child!)),
               );
             },
             home: const SplashScreen(),

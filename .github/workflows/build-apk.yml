@@ -1,0 +1,65 @@
+# Builds the Study Flora Android APKs in the cloud (GitHub Actions).
+# Download them from the run's "Artifacts" section.
+#   StudyFlora-tester.apk : real app (Supabase accounts, needs the two repo secrets below)
+#   StudyFlora-qa.apk     : offline demo build used for testing
+# Repo secrets needed for the tester APK (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL, SUPABASE_ANON_KEY  (same values as supabase_config.json)
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Unit tests
+        run: flutter test
+
+      - name: Build QA (demo) APK
+        run: |
+          flutter build apk --release --no-tree-shake-icons --dart-define=SUPABASE_URL=
+          mkdir -p out
+          cp build/app/outputs/flutter-apk/app-release.apk out/StudyFlora-qa.apk
+
+      - name: Build tester APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_URL / SUPABASE_ANON_KEY secrets are not set, so only the QA APK was built."
+            exit 0
+          fi
+          flutter build apk --release --no-tree-shake-icons \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+          cp build/app/outputs/flutter-apk/app-release.apk out/StudyFlora-tester.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyFlora-apks
+          path: out/*.apk
+          retention-days: 14

@@ -9,7 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/common.dart';
 import 'auth_widgets.dart';
 
-/// Big centered field for the 6–8 digit code sent by email.
+/// Big centered field for the 6-digit code sent by email.
 class CodeField extends StatelessWidget {
   const CodeField({super.key, required this.controller, this.onSubmitted});
   final TextEditingController controller;
@@ -22,9 +22,9 @@ class CodeField extends StatelessWidget {
       keyboardType: TextInputType.number,
       textAlign: TextAlign.center,
       autofillHints: const [AutofillHints.oneTimeCode],
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(8)],
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
       style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: 8),
-      validator: (v) => RegExp(r'^\d{6,8}$').hasMatch(v ?? '') ? null : 'Enter the code from your email',
+      validator: (v) => RegExp(r'^\d{6}$').hasMatch(v ?? '') ? null : 'Enter the 6-digit code from your email',
       onFieldSubmitted: onSubmitted,
       decoration: const InputDecoration(hintText: '••••••', counterText: ''),
     );
@@ -147,7 +147,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
       showBack: true,
       icon: Icons.mark_email_unread_outlined,
       title: 'Verify Your Email',
-      subtitle: 'Enter the code we sent to ${widget.email}.',
+      subtitle: 'Enter the 6-digit code we sent to ${widget.email}.',
       children: [
         if (_error != null) InlineAlert(message: _error!),
         SfCard(

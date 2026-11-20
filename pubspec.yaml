@@ -30,6 +30,10 @@ dependencies:
   # Sound effects + background music
   audioplayers: ^6.1.0
 
+  # Garden reminders while the app is closed
+  flutter_local_notifications: 19.5.0
+  timezone: ^0.10.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

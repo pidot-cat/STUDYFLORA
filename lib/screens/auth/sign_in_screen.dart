@@ -11,7 +11,8 @@ import 'forgot_password_screen.dart';
 import 'sign_up_screen.dart';
 import 'verify_email_screen.dart';
 
-/// Login (FR-1.2). New users on this phone see "Welcome to StudyFlora!",
+/// Login (FR-1.2). Right after signing up the screen says the new account is
+/// ready; otherwise new users on this phone see "Welcome to StudyFlora!" and
 /// returning users see "Welcome back!".
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -26,6 +27,7 @@ class _SignInScreenState extends State<SignInScreen> {
   String? _error;
   String? _info;
   bool _needsConfirm = false;
+  bool _newAccount = false; // came back here from Sign Up
 
   @override
   void dispose() {
@@ -76,6 +78,7 @@ class _SignInScreenState extends State<SignInScreen> {
         _error = null;
         _needsConfirm = false;
         _info = 'Email verified! You can log in now.';
+        _newAccount = true;
       });
     }
   }
@@ -88,6 +91,7 @@ class _SignInScreenState extends State<SignInScreen> {
       _pw.clear();
       _error = null;
       _info = result.message;
+      _newAccount = true;
     });
   }
 
@@ -99,10 +103,16 @@ class _SignInScreenState extends State<SignInScreen> {
     final offline = auth.demoMode && Env.hasSupabase; // keys set, but the cloud could not be reached at launch
 
     return AuthScaffold(
-      title: returning ? 'Welcome back!' : 'Welcome to StudyFlora!',
-      subtitle: returning
-          ? 'Log in to pick up where you left off and keep your garden growing.'
-          : 'Log in to start studying, earning rewards and growing your garden.',
+      title: _newAccount
+          ? 'Your account is ready!'
+          : returning
+              ? 'Welcome back!'
+              : 'Welcome to StudyFlora!',
+      subtitle: _newAccount
+          ? 'Log in with your new account to plant your first seed and start studying.'
+          : returning
+              ? 'Log in to pick up where you left off and keep your garden growing.'
+              : 'Log in to start studying, earning rewards and growing your garden.',
       children: [
         if (_info != null) InlineAlert(message: _info!, error: false, icon: Icons.mark_email_read_outlined),
         if (offline && _error == null)

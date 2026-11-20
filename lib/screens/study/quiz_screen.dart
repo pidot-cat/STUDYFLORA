@@ -67,7 +67,8 @@ class _QuizScreenState extends State<QuizScreen> {
       _correct++;
       HapticFeedback.lightImpact();
       SoundService.instance.play(Sfx.correct);
-    } else {
+    } else if (idx != -1) {
+      // A wrong pick. Running out of time is "No answer", not a wrong answer.
       HapticFeedback.heavyImpact();
       SoundService.instance.play(Sfx.wrong);
     }
@@ -315,7 +316,7 @@ class _Feedback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sf;
-    final color = correct ? c.accent : c.danger;
+    final color = correct ? c.accent : (timedOut ? c.ink : c.danger);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 350),
@@ -325,7 +326,7 @@ class _Feedback extends StatelessWidget {
         margin: const EdgeInsets.only(top: 4),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: correct ? c.brandSoft : c.dangerSoft,
+          color: correct ? c.brandSoft : (timedOut ? c.surfaceAlt : c.dangerSoft),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -334,7 +335,7 @@ class _Feedback extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                correct ? 'Correct! Nice work.' : (timedOut ? 'Time’s up — counted as incorrect.' : 'Incorrect — the right answer is in green.'),
+                correct ? 'Correct! Nice work.' : (timedOut ? 'Time’s up — No answer. The right answer is in green.' : 'Incorrect — the right answer is in green.'),
                 style: TextStyle(fontWeight: FontWeight.w800, color: color),
               ),
             ),
@@ -366,14 +367,11 @@ class QuizResultScreen extends StatefulWidget {
 class _QuizResultScreenState extends State<QuizResultScreen> {
   bool _showAnswers = false;
 
+  // Score out of 10 → coins (GameRules.quizCoins).
   static const _brackets = [
-    (100, 100, '100%', 100),
-    (90, 99, '90–99%', 75),
-    (80, 89, '80–89%', 50),
-    (70, 79, '70–79%', 30),
-    (60, 69, '60–69%', 20),
-    (50, 59, '50–59%', 10),
-    (0, 49, '0–49%', 5),
+    (80, 100, '8–10 correct', 50),
+    (50, 79, '5–7 correct', 30),
+    (0, 49, '0–4 correct', 5),
   ];
 
   @override
@@ -469,10 +467,10 @@ class _QuizResultScreenState extends State<QuizResultScreen> {
                   const SizedBox(width: 8),
                   Expanded(child: _CountTile(value: incorrect.length, label: 'Incorrect', icon: Icons.close_rounded, fg: c.danger, bg: c.dangerSoft)),
                   const SizedBox(width: 8),
-                  Expanded(child: _CountTile(value: unanswered.length, label: 'Unanswered', icon: Icons.remove_rounded, fg: c.muted, bg: c.surfaceAlt)),
+                  Expanded(child: _CountTile(value: unanswered.length, label: 'No answer', icon: Icons.timer_off_outlined, fg: c.muted, bg: c.surfaceAlt)),
                 ]),
                 const SizedBox(height: 10),
-                Text('Unanswered questions count as incorrect in the total score.',
+                Text('“No answer” means time ran out before you picked. It does not add to your score.',
                     style: context.tt.bodySmall?.copyWith(fontSize: 11, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
               ]),
             ),
@@ -508,7 +506,7 @@ class _QuizResultScreenState extends State<QuizResultScreen> {
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Text('+${a.coins} coins earned', style: context.tt.titleMedium),
-                      Text('First-attempt reward for a ${bracket.$3} score', style: context.tt.bodySmall),
+                      Text('First-attempt reward for ${bracket.$3}', style: context.tt.bodySmall),
                     ]),
                   ),
                 ]),
@@ -641,7 +639,7 @@ class _AnswerCard extends StatelessWidget {
           Row(children: [
             StatusBadge('Q${index + 1}', tone: ok ? Tone.green : (picked == -1 ? Tone.neutral : Tone.red), dense: true),
             const SizedBox(width: 6),
-            Text(ok ? 'Correct' : (picked == -1 ? 'Unanswered' : 'Incorrect'),
+            Text(ok ? 'Correct' : (picked == -1 ? 'No answer' : 'Incorrect'),
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ok ? c.accent : (picked == -1 ? c.muted : c.danger))),
             const Spacer(),
             if (flagged) const StatusBadge('Flagged', tone: Tone.gold, icon: Icons.flag_rounded, dense: true),
@@ -686,7 +684,7 @@ class _FlashReviewScreenState extends State<FlashReviewScreen> {
               Text('Card ${_i + 1} of ${widget.cards.length}', style: context.tt.titleSmall),
               const Spacer(),
               if (card.flagged) const StatusBadge('Flagged', tone: Tone.gold, icon: Icons.flag_rounded, dense: true),
-              if (card.picked == -1) ...[const SizedBox(width: 6), const StatusBadge('Unanswered', tone: Tone.neutral, dense: true)],
+              if (card.picked == -1) ...[const SizedBox(width: 6), const StatusBadge('No answer', tone: Tone.neutral, dense: true)],
               if (card.picked >= 0 && card.picked != card.q.answer) ...[const SizedBox(width: 6), const StatusBadge('Missed', tone: Tone.red, dense: true)],
             ]),
             const SizedBox(height: 8),

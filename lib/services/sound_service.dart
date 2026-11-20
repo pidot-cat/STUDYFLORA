@@ -13,6 +13,7 @@ class SoundService {
   bool sfxEnabled = true;
   bool musicEnabled = true;
   bool _appVisible = true;
+  bool _signedIn = false;
 
   final List<AudioPlayer> _pool = [];
   int _next = 0;
@@ -75,8 +76,15 @@ class SoundService {
     _syncMusic();
   }
 
+  /// Music only plays inside the app (after login), never on the auth screens.
+  void setSignedIn(bool signedIn) {
+    if (_signedIn == signedIn) return;
+    _signedIn = signedIn;
+    _syncMusic();
+  }
+
   Future<void> _syncMusic() async {
-    final shouldPlay = musicEnabled && _appVisible;
+    final shouldPlay = musicEnabled && _appVisible && _signedIn;
     try {
       if (shouldPlay && !_musicPlaying) {
         _musicPlaying = true;

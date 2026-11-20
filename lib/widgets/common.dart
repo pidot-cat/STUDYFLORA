@@ -36,8 +36,8 @@ class _PressableState extends State<Pressable> {
           ? null
           : () {
               if (widget.haptic && FeedbackPrefs.sound) {
+                // The tap sound itself comes from TapSound (app-wide).
                 HapticFeedback.selectionClick();
-                SoundService.instance.play(Sfx.tap);
               }
               widget.onTap!();
             },
