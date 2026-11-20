@@ -25,6 +25,7 @@ class GardenNotifications {
 
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
+  bool _exact = false; // exact alarms allowed → reminders arrive on time
 
   static const _channel = AndroidNotificationDetails(
     'garden_reminders',
@@ -54,6 +55,10 @@ class GardenNotifications {
         const InitializationSettings(android: AndroidInitializationSettings('ic_stat_flora')),
       );
       _ready = true;
+      _exact = await _plugin
+              .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+              ?.canScheduleExactNotifications() ??
+          false;
     } catch (e) {
       debugPrint('Notifications unavailable: $e');
     }
@@ -165,7 +170,7 @@ class GardenNotifications {
         body,
         tz.TZDateTime.from(when.toUtc(), tz.UTC),
         _details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: _exact ? AndroidScheduleMode.exactAllowWhileIdle : AndroidScheduleMode.inexactAllowWhileIdle,
       );
     } catch (e) {
       debugPrint('Could not schedule reminder $id: $e');
