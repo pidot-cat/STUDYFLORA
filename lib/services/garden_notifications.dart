@@ -131,7 +131,9 @@ class GardenNotifications {
         _idThirstyNow,
         realNow.add(const Duration(hours: 1)),
         thirstyNow.length == 1 ? '💧 Your ${thirstyNow.first} is thirsty' : '💧 ${thirstyNow.length} plants are thirsty',
-        'Their growth is paused until you water them. Your garden is waiting!',
+        thirstyNow.length == 1
+            ? 'It stopped growing until you water it. Your garden is waiting!'
+            : 'They stopped growing until you water them. Your garden is waiting!',
       );
     }
     if (readyNow.isNotEmpty) {
