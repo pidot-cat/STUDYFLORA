@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/constants.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../models/cosmetics.dart';
@@ -88,7 +89,10 @@ Future<void> showToolPurchaseSheet(BuildContext context, ToolKind kind) {
       unitLabel: 'UNITS',
       unitName: t.unit,
       unitPrice: t.price,
-      maxQty: kind == ToolKind.water ? 3 : 10,
+      // Same 10-unit limit as the other tools; the can holds up to 33 charges.
+      maxQty: kind == ToolKind.water
+          ? ((GameRules.maxWaterCharges - g.waterCharges) ~/ 3).clamp(1, GameRules.maxCansPerPurchase)
+          : 10,
       footnote: 'Purchased ${t.name.toLowerCase()} will be deposited directly into your Garden Inventory ready to use.',
       buy: (g, q) => g.buyTool(kind, q),
       successText: '${t.name} added to inventory',

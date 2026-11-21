@@ -40,14 +40,20 @@ class GameRules {
   // Watering can: 3 charges, 1 restored every 10 minutes (Shop mockup)
   static const baseWaterCharges = 3;
   static const chargeRestore = Duration(minutes: 10);
-  static const maxWaterCharges = 9; // buying cans can overfill up to this
+  static const maxCansPerPurchase = 10; // same buy limit as the other tools
+  static const maxWaterCharges = baseWaterCharges + 3 * maxCansPerPurchase; // 33
 
   // FR-4.6 — fertilizer doubles growth speed (once per plant)
   static const fertilizerMultiplier = 2.0;
 
-  // Starting economy
-  static const startCoins = 150;
+  // Starting economy: new accounts start at 0 and claim a 150-coin welcome
+  // gift from a celebration screen.
+  static const welcomeCoins = 150;
+  static const startCoins = 0;
   static const startXp = 0;
+
+  // Daily free flower: one random seed per day, ready from 8:00 AM (phone time).
+  static const dailyGiftHour = 8;
 
   // Verified-upload reward (replaces SRS FR-2.5's flat 10 coins — per Paul's
   // update): the user picks ONE garden item per unique file — a random seed,

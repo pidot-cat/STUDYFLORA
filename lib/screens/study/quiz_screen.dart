@@ -558,7 +558,7 @@ class _QuizResultScreenState extends State<QuizResultScreen> {
             Row(children: [
               Expanded(
                 child: SecondaryButton(
-                  label: 'Retake (practice)',
+                  label: 'Retake',
                   icon: Icons.replay_rounded,
                   onTap: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => QuizScreen(moduleId: widget.module.id))),
                 ),

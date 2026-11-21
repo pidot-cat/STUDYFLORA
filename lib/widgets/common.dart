@@ -207,12 +207,61 @@ class SecondaryButton extends StatelessWidget {
           border: Border.all(color: danger ? c.danger.withValues(alpha: 0.4) : c.line, width: 1.4),
         ),
         alignment: Alignment.center,
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[Icon(icon, color: fg, size: 19), const SizedBox(width: 8)],
-          Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 15)),
-        ]),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        // Shrinks (never wraps or overflows) when two buttons share a row.
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[Icon(icon, color: fg, size: 19), const SizedBox(width: 8)],
+            Text(label, maxLines: 1, style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 15)),
+          ]),
+        ),
       ),
     );
+  }
+}
+
+/// Red notification dot ("something to claim here"). Shows a number when
+/// [count] is above 1.
+class RedDot extends StatelessWidget {
+  const RedDot({super.key, this.count = 1, this.size = 16});
+  final int count;
+  final double size;
+  @override
+  Widget build(BuildContext context) {
+    final c = context.sf;
+    return Container(
+      constraints: BoxConstraints(minWidth: size, minHeight: size),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: c.danger,
+        borderRadius: BorderRadius.circular(size),
+        border: Border.all(color: c.surface, width: 1.6),
+      ),
+      alignment: Alignment.center,
+      child: count > 1
+          ? Text(count > 9 ? '9+' : '$count',
+              textScaler: TextScaler.noScaling,
+              style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800, height: 1.1))
+          : null,
+    );
+  }
+}
+
+/// Solid red "Claim" pill used wherever a reward is waiting.
+class ClaimPill extends StatelessWidget {
+  const ClaimPill({super.key, this.label = 'Claim', this.onTap, this.dense = false});
+  final String label;
+  final VoidCallback? onTap;
+  final bool dense;
+  @override
+  Widget build(BuildContext context) {
+    final pill = Container(
+      padding: EdgeInsets.symmetric(horizontal: dense ? 9 : 14, vertical: dense ? 3 : 6),
+      decoration: BoxDecoration(color: context.sf.danger, borderRadius: BorderRadius.circular(99)),
+      child: Text(label, maxLines: 1, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: dense ? 10.5 : 12.5)),
+    );
+    return onTap == null ? pill : Pressable(onTap: onTap, child: pill);
   }
 }
 

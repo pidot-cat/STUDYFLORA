@@ -71,17 +71,20 @@ class _StudyFloraAppState extends State<StudyFloraApp> with WidgetsBindingObserv
         ChangeNotifierProvider(create: (_) => ClockTicker()),
         ChangeNotifierProvider(create: (_) => NavState()),
       ],
-      child: Consumer<SettingsProvider>(
-        builder: (context, s, _) {
+      child: Consumer2<SettingsProvider, AuthProvider>(
+        builder: (context, s, a, _) {
+          // Dark mode is an in-app preference: the login, sign-up and
+          // forgot-password screens are always light.
+          final dark = s.darkMode && a.signedIn;
           // Transparent status bar so the app background shows behind it (no white strip).
-          SystemChrome.setSystemUIOverlayStyle((s.darkMode ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+          SystemChrome.setSystemUIOverlayStyle((dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
               .copyWith(statusBarColor: Colors.transparent));
           return MaterialApp(
             title: 'Study Flora',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.build(Brightness.light),
             darkTheme: AppTheme.build(Brightness.dark),
-            themeMode: s.themeMode,
+            themeMode: a.signedIn ? s.themeMode : ThemeMode.light,
             themeAnimationDuration: const Duration(milliseconds: 350),
             // Respect the phone's font size, but cap it so fixed-size cards
             // never overflow on "Largest" accessibility settings.

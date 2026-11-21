@@ -58,6 +58,13 @@ class GameProvider extends ChangeNotifier {
   /// and study streak.
   Set<String> activeDays = {};
 
+  // ---- gifts
+  /// New accounts claim their 150 welcome coins from a celebration screen.
+  bool welcomePending = false;
+
+  /// Day ("yyyy-mm-dd") the daily free flower was last claimed.
+  String? dailyGiftDay;
+
   int updatedAt = 0;
 
   /// Newly unlocked achievements waiting for a celebration dialog.
@@ -129,10 +136,13 @@ class GameProvider extends ChangeNotifier {
     lastChargeAt = GameClock.nowMs();
     pots = List.generate(GameRules.potCount, (i) => Pot(number: i + 1));
     avatarId = 'bear';
-    ownedBorders = {'starter'};
+    // The free Verdant Sprout border is claimed in the Shop (red dot until then).
+    ownedBorders = {};
     equippedBorder = BorderDef.noneId; // plain avatar until the user picks a border
-    badges = {'b_sprout': true};
-    showcaseBadge = 'b_sprout';
+    badges = {};
+    showcaseBadge = null;
+    welcomePending = true;
+    dailyGiftDay = null;
     planted = harvests = waterings = verifiedUploads = quizzesDone = perfectQuizzes = mastered = 0;
     harvestedKinds = {};
     activeDays = {};
@@ -167,6 +177,9 @@ class GameProvider extends ChangeNotifier {
           'harvestedKinds': harvestedKinds.toList(),
         },
         'activeDays': activeDays.toList(),
+        'welcomePending': welcomePending,
+        'dailyGiftDay': dailyGiftDay,
+        'freeBorderClaimable': true, // saves from before: the free border was owned automatically
         'timeOffsetMs': GameClock.offset.inMilliseconds,
         'updatedAt': updatedAt,
       };
@@ -190,9 +203,10 @@ class GameProvider extends ChangeNotifier {
       pots = pots.take(GameRules.potCount).toList();
     }
     avatarId = (j['avatarId'] ?? 'bear') as String;
-    ownedBorders = ((j['ownedBorders'] ?? const ['starter']) as List).cast<String>().toSet()..add('starter');
+    ownedBorders = ((j['ownedBorders'] ?? const ['starter']) as List).cast<String>().toSet();
+    if (j['freeBorderClaimable'] != true) ownedBorders.add('starter'); // older saves already had it
     equippedBorder = (j['equippedBorder'] ?? 'starter') as String;
-    badges = Map<String, bool>.from((j['badges'] ?? const {'b_sprout': true}) as Map);
+    badges = Map<String, bool>.from((j['badges'] ?? const {}) as Map);
     showcaseBadge = j['showcaseBadge'] as String?;
     final s = Map<String, dynamic>.from((j['stats'] ?? const {}) as Map);
     planted = (s['planted'] ?? 0) as int;
@@ -204,6 +218,8 @@ class GameProvider extends ChangeNotifier {
     mastered = (s['mastered'] ?? 0) as int;
     harvestedKinds = ((s['harvestedKinds'] ?? const []) as List).cast<String>().toSet();
     activeDays = ((j['activeDays'] ?? const []) as List).cast<String>().toSet();
+    welcomePending = (j['welcomePending'] ?? false) as bool; // older accounts got their coins already
+    dailyGiftDay = j['dailyGiftDay'] as String?;
     if (_uid != null) activeDays.add(dayKey(DateTime.now())); // keep today after a cloud restore
     GameClock.offset = Duration(milliseconds: (j['timeOffsetMs'] ?? 0) as int);
     updatedAt = (j['updatedAt'] ?? 0) as int;
@@ -262,6 +278,46 @@ class GameProvider extends ChangeNotifier {
     _commit();
     return id;
   }
+
+  // ===========================================================================
+  // Gifts: welcome coins and the daily free flower
+  // ===========================================================================
+  void claimWelcome() {
+    if (!welcomePending) return;
+    welcomePending = false;
+    coins += GameRules.welcomeCoins;
+    _commit();
+  }
+
+  /// When today's free flower unlocks (8:00 AM, phone time).
+  static DateTime dailyGiftTime(DateTime day) => DateTime(day.year, day.month, day.day, GameRules.dailyGiftHour);
+
+  bool get dailyGiftReady {
+    final now = DateTime.now();
+    return dailyGiftDay != dayKey(now) && !now.isBefore(dailyGiftTime(now));
+  }
+
+  /// Next time a free flower becomes claimable.
+  DateTime get nextDailyGift {
+    final now = DateTime.now();
+    if (dailyGiftReady) return now;
+    final today = dailyGiftTime(now);
+    if (now.isBefore(today) && dailyGiftDay != dayKey(now)) return today;
+    return dailyGiftTime(now.add(const Duration(days: 1)));
+  }
+
+  /// Returns the flower id of the random seed, or null if not ready.
+  String? claimDailyGift() {
+    if (!dailyGiftReady) return null;
+    dailyGiftDay = dayKey(DateTime.now());
+    return grantRandomSeed();
+  }
+
+  /// Things waiting on the Home tab (welcome coins, daily flower).
+  int get homeClaims => (welcomePending ? 1 : 0) + (dailyGiftReady ? 1 : 0);
+
+  /// Free borders that can be claimed in the Shop.
+  int get freeBordersToClaim => BorderDef.all.where((b) => b.isFree && !ownedBorders.contains(b.id)).length;
 
   /// Free tools (upload rewards). Purchases go through [buyTool].
   void grantTool(ToolKind kind, int qty) {
@@ -457,8 +513,12 @@ class GameProvider extends ChangeNotifier {
     if (kind == ToolKind.water) {
       final now = GameClock.nowMs();
       _settleCharges(now);
-      if (waterCharges >= GameRules.maxWaterCharges) {
-        return const ActionResult(false, 'Your watering can is already full (9 charges max).');
+      final room = (GameRules.maxWaterCharges - waterCharges) ~/ 3;
+      if (room <= 0) {
+        return const ActionResult(false, 'Your watering can is full (${GameRules.maxWaterCharges} charges max).');
+      }
+      if (qty > room) {
+        return ActionResult(false, 'You can only buy $room more can${room == 1 ? '' : 's'} right now (${GameRules.maxWaterCharges} charges max).');
       }
       waterCharges = min(GameRules.maxWaterCharges, waterCharges + 3 * qty);
       lastChargeAt = now;

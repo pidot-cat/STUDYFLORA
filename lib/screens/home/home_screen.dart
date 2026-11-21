@@ -11,6 +11,7 @@ import '../../providers/feedback_bus.dart';
 import '../../providers/game_provider.dart';
 import '../../providers/study_provider.dart';
 import '../../widgets/common.dart';
+import '../../widgets/gift_widgets.dart';
 import '../../widgets/plant_widgets.dart';
 import '../../widgets/profile_widgets.dart';
 import '../../widgets/sheets.dart';
@@ -47,6 +48,7 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
             children: [
               const StreakCalendar(),
+              const DailyGiftCard(),
 
               // ---- plants
               if (active.isNotEmpty) ...[

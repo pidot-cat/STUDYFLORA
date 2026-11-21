@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../models/cosmetics.dart';
 import '../../models/flower.dart';
 import '../../providers/game_provider.dart';
+import '../../services/sound_service.dart';
 import '../../widgets/common.dart';
 import '../../widgets/plant_widgets.dart';
 import '../../widgets/profile_widgets.dart';
@@ -51,6 +52,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   _Segmented(
                     labels: const ['Seeds', 'Tools', 'Borders'],
                     icons: const [Icons.grass_rounded, Icons.handyman_outlined, Icons.blur_circular_rounded],
+                    dots: [0, 0, context.select<GameProvider, int>((g) => g.freeBordersToClaim)],
                     index: _tab,
                     onChanged: (i) => setState(() => _tab = i),
                   ),
@@ -69,7 +71,7 @@ class _ShopScreenState extends State<ShopScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               sliver: switch (_tab) {
-                0 => _grid([for (final f in Flower.all) _SeedCard(flower: f, bundle: _bundles)]),
+                0 => _grid([for (final f in _seedsByPrice) _SeedCard(flower: f, bundle: _bundles)]),
                 1 => _grid([for (final t in ToolDef.all) _ToolCard(tool: t)]),
                 _ => _grid([for (final b in BorderDef.all) _BorderCard(border: b)], extent: 226),
               },
@@ -91,6 +93,13 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  /// Cheapest first; same price → alphabetical.
+  static final _seedsByPrice = [...Flower.all]
+    ..sort((a, b) {
+      final p = a.seedPrice.compareTo(b.seedPrice);
+      return p != 0 ? p : a.name.compareTo(b.name);
+    });
+
   /// Fixed card height so cards stay compact on every screen width.
   Widget _grid(List<Widget> children, {double extent = 212}) => SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -104,9 +113,10 @@ class _ShopScreenState extends State<ShopScreen> {
 }
 
 class _Segmented extends StatelessWidget {
-  const _Segmented({required this.labels, required this.icons, required this.index, required this.onChanged});
+  const _Segmented({required this.labels, required this.icons, required this.index, required this.onChanged, this.dots = const []});
   final List<String> labels;
   final List<IconData> icons;
+  final List<int> dots; // red dot per segment (free item to claim)
   final int index;
   final ValueChanged<int> onChanged;
   @override
@@ -127,7 +137,14 @@ class _Segmented extends StatelessWidget {
                 child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(icons[i], size: 17, color: i == index ? c.onBrand : c.muted),
                   const SizedBox(width: 6),
-                  Text(labels[i], style: TextStyle(color: i == index ? c.onBrand : c.ink, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                  Flexible(
+                    child: Text(labels[i],
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: TextStyle(color: i == index ? c.onBrand : c.ink, fontWeight: FontWeight.w600, fontSize: 13.5)),
+                  ),
+                  if (i < dots.length && dots[i] > 0) ...[const SizedBox(width: 5), const RedDot(size: 10)],
                 ]),
               ),
             ),
@@ -173,6 +190,7 @@ class _ProductCard extends StatelessWidget {
     required this.onTap,
     this.tag,
     this.actionEnabled = true,
+    this.actionColor,
   });
   final Widget art;
   final String title;
@@ -183,6 +201,7 @@ class _ProductCard extends StatelessWidget {
   final VoidCallback onTap;
   final Widget? tag;
   final bool actionEnabled;
+  final Color? actionColor;
 
   @override
   Widget build(BuildContext context) {
@@ -210,8 +229,9 @@ class _ProductCard extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: actionEnabled ? c.brand : c.brandSoft, borderRadius: BorderRadius.circular(99)),
-            child: Text(action, style: TextStyle(color: actionEnabled ? c.onBrand : c.brand, fontWeight: FontWeight.w700, fontSize: 12)),
+            decoration: BoxDecoration(color: actionColor ?? (actionEnabled ? c.brand : c.brandSoft), borderRadius: BorderRadius.circular(99)),
+            child: Text(action,
+                style: TextStyle(color: actionColor != null ? Colors.white : (actionEnabled ? c.onBrand : c.brand), fontWeight: FontWeight.w700, fontSize: 12)),
           ),
         ]),
       ]),
@@ -282,13 +302,17 @@ class _BorderCard extends StatelessWidget {
       detail: '+ ${badge.name} badge',
       priceLabel: b.isFree ? 'Free' : '${b.priceXp}',
       priceIcon: b.isFree ? Icon(Icons.redeem_rounded, size: 16, color: c.accent) : const XpIcon(size: 16),
-      action: equipped ? 'Equipped' : (owned ? 'Equip' : 'Buy'),
+      action: equipped ? 'Equipped' : (owned ? 'Equip' : (b.isFree ? 'Claim' : 'Buy')),
       actionEnabled: !equipped,
+      actionColor: !owned && b.isFree ? c.danger : null,
       onTap: () {
         if (equipped) return;
         if (owned) {
           g.equipBorder(b.id);
           showToast(context, '${b.name} equipped');
+        } else if (b.isFree) {
+          SoundService.instance.play(Sfx.badge);
+          g.buyBorder(b.id); // free: claims the border + its badge and equips it
         } else {
           showBorderPurchaseSheet(context, b);
         }

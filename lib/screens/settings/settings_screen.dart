@@ -85,7 +85,7 @@ class SettingsScreen extends StatelessWidget {
                   leading: IconTile(Icons.military_tech_outlined, size: 44),
                   title: 'Badges & Achievements',
                   subtitle: '${g.badges.length} of ${Badges.all.length} unlocked',
-                  trailing: g.unclaimedBadges > 0 ? StatusBadge('${g.unclaimedBadges} to claim', tone: Tone.gold, dense: true) : null,
+                  trailing: g.unclaimedBadges > 0 ? const ClaimPill() : null,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BadgesScreen())),
                 ),
               ]),

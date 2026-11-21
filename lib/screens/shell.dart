@@ -4,16 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../core/constants.dart';
 import '../core/theme.dart';
 import '../models/cosmetics.dart';
 import '../providers/feedback_bus.dart';
 import '../providers/game_provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/study_provider.dart';
+import '../providers/sync_provider.dart';
 import '../services/feedback_service.dart';
 import '../services/garden_notifications.dart';
 import '../services/sound_service.dart';
 import '../services/storage_service.dart';
 import '../widgets/common.dart';
+import '../widgets/gift_widgets.dart';
 import '../widgets/profile_widgets.dart';
 import 'garden/garden_screen.dart';
 import 'home/home_screen.dart';
@@ -49,8 +53,35 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     final g = context.read<GameProvider>();
     if (_game != g) {
       _game?.removeListener(_maybeCelebrate);
-      _game = g..addListener(_maybeCelebrate);
+      _game?.removeListener(_maybeWelcome);
+      _game = g
+        ..addListener(_maybeCelebrate)
+        ..addListener(_maybeWelcome);
     }
+    final s = context.read<SyncProvider>();
+    if (_sync != s) {
+      _sync?.removeListener(_maybeWelcome);
+      _sync = s..addListener(_maybeWelcome);
+    }
+    _maybeWelcome();
+  }
+
+  SyncProvider? _sync;
+  bool _welcomeShowing = false;
+
+  /// New accounts claim their welcome coins from a celebration screen. On a
+  /// new phone we wait for the first cloud sync so returning users (whose
+  /// coins were claimed long ago) never see it.
+  void _maybeWelcome() {
+    final g = _game, s = _sync;
+    if (_welcomeShowing || g == null || s == null || !g.loaded || !g.welcomePending) return;
+    final waitForCloud = s.cloudEnabled && s.lastSyncedAt == 0 && s.status != SyncStatus.failed && s.status != SyncStatus.offline;
+    if (waitForCloud) return;
+    _welcomeShowing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted && g.welcomePending) await showWelcomeGift(context);
+      _welcomeShowing = false;
+    });
   }
 
   @override
@@ -84,6 +115,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     GardenNotifications.instance.cancelAll(); // logged out / account deleted
     _game?.removeListener(_maybeCelebrate);
+    _game?.removeListener(_maybeWelcome);
+    _sync?.removeListener(_maybeWelcome);
     celebrationHold.removeListener(_maybeCelebrate);
     super.dispose();
   }
@@ -150,7 +183,17 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.sf;
-    final badgeCount = context.select<GameProvider, int>((g) => g.unclaimedBadges);
+    context.watch<ClockTicker>(); // plants become ready / the daily gift unlocks over time
+    final g = context.watch<GameProvider>();
+    final now = GameClock.nowMs();
+    // Red dot = something to claim on that tab.
+    final dots = [
+      g.homeClaims,
+      g.readyCount(now),
+      context.select<StudyProvider, int>((s) => s.pendingRewards),
+      g.freeBordersToClaim,
+      g.unclaimedBadges,
+    ];
     return Container(
       decoration: BoxDecoration(
         color: c.surface,
@@ -185,15 +228,11 @@ class _BottomNav extends StatelessWidget {
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
                         Stack(clipBehavior: Clip.none, children: [
                           Icon(i == index ? _items[i].$2 : _items[i].$1, size: 22, color: i == index ? c.brand : c.muted),
-                          if (i == 4 && badgeCount > 0)
+                          if (dots[i] > 0)
                             Positioned(
-                              right: -6,
+                              right: dots[i] > 1 ? -9 : -4,
                               top: -4,
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(color: c.danger, shape: BoxShape.circle),
-                                child: Text('$badgeCount', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800, height: 1)),
-                              ),
+                              child: RedDot(count: dots[i], size: dots[i] > 1 ? 16 : 12),
                             ),
                         ]),
                         const SizedBox(height: 3),

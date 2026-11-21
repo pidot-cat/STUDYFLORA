@@ -18,6 +18,7 @@ import '../providers/game_provider.dart';
 ///  • a plant ran out of water (growth paused)
 ///  • a plant is ready to harvest
 ///  • the watering can is full again
+///  • the daily free flower (8:00 AM)
 ///  • "come back" nudges after 1 and 3 days away
 class GardenNotifications {
   GardenNotifications._();
@@ -44,6 +45,7 @@ class GardenNotifications {
   static const _idCanFull = 12;
   static const _idMiss1 = 13;
   static const _idMiss3 = 14;
+  static const _idDaily = 15;
   static int _idPot(int n) => 100 + n; // one per pot
 
   bool get _supported => !kIsWeb && Platform.isAndroid;
@@ -155,6 +157,14 @@ class GardenNotifications {
       await _at(_idCanFull, realNow.add(fullIn), '🚿 Your watering can is full again',
           'You have ${GameRules.baseWaterCharges} waterings ready. Keep your plants growing!');
     }
+
+    // Daily free flower (8:00 AM).
+    await _at(
+      _idDaily,
+      game.dailyGiftReady ? realNow.add(const Duration(hours: 2)) : game.nextDailyGift,
+      '🌼 Your free flower is ready!',
+      'Open Study Flora to claim today’s free random seed.',
+    );
 
     // Come-back nudges.
     await _at(_idMiss1, realNow.add(const Duration(days: 1)), '🌱 Your garden misses you',

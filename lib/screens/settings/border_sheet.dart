@@ -65,6 +65,8 @@ Future<void> showBorderSheet(BuildContext context) {
                       onTap: () {
                         if (g.ownedBorders.contains(b.id)) {
                           g.equipBorder(b.id);
+                        } else if (b.isFree) {
+                          g.buyBorder(b.id); // free border: claim it (comes with its badge)
                         } else {
                           showBorderPurchaseSheet(ctx, b);
                         }
@@ -100,7 +102,9 @@ Future<void> showBorderSheet(BuildContext context) {
                               ? const StatusBadge('Equipped', dense: true)
                               : g.ownedBorders.contains(b.id)
                                   ? const StatusBadge('Owned', tone: Tone.blue, dense: true)
-                                  : StatusBadge('${b.priceXp} XP', tone: Tone.neutral, icon: Icons.lock_outline_rounded, dense: true),
+                                  : b.isFree
+                                      ? const ClaimPill(label: 'Claim free', dense: true)
+                                      : StatusBadge('${b.priceXp} XP', tone: Tone.neutral, icon: Icons.lock_outline_rounded, dense: true),
                         ]),
                       ),
                     ),
