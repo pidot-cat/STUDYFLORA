@@ -22,6 +22,14 @@ class Env {
   static bool get cloud => hasSupabase && supabaseReady;
 }
 
+/// Shown in Settings and sent with feedback, so testers can see which build
+/// is installed. Keep in step with `version:` in pubspec.yaml.
+class AppInfo {
+  static const version = '1.1';
+  static const build = 2;
+  static String get label => 'v$version (build $build)';
+}
+
 class GameRules {
   // FR-4.1
   static const potCount = 18;

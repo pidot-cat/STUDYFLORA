@@ -34,7 +34,7 @@ class FeedbackService {
         'rating': rating,
         'message': message.trim(),
         'email': email,
-        'app_version': '1.0',
+        'app_version': AppInfo.label,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
     await _saveQueue(q);

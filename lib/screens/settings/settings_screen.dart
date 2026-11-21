@@ -156,7 +156,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ]),
               const SizedBox(height: 24),
-              Center(child: Text('Study Flora v1.0', style: context.tt.bodySmall)),
+              Center(child: Text('Study Flora ${AppInfo.label}', style: context.tt.bodySmall)),
             ],
           ),
         ),
