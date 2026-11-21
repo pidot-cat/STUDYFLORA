@@ -231,8 +231,10 @@ class RedDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.sf;
     return Container(
-      constraints: BoxConstraints(minWidth: size, minHeight: size),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      height: size,
+      width: count > 1 ? null : size,
+      constraints: count > 1 ? BoxConstraints(minWidth: size) : null,
+      padding: EdgeInsets.symmetric(horizontal: count > 1 ? 4 : 0),
       decoration: BoxDecoration(
         color: c.danger,
         borderRadius: BorderRadius.circular(size),
