@@ -1,7 +1,7 @@
 name: mobile_application_project
 description: "Study Flora — a gamified study and quiz reviewer app for UCU students."
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.1.0+3
 
 environment:
   sdk: ^3.5.0

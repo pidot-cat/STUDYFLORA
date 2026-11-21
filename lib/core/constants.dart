@@ -26,7 +26,7 @@ class Env {
 /// is installed. Keep in step with `version:` in pubspec.yaml.
 class AppInfo {
   static const version = '1.1';
-  static const build = 2;
+  static const build = 3;
   static String get label => 'v$version (build $build)';
 }
 

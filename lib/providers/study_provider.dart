@@ -64,9 +64,9 @@ class StudyProvider extends ChangeNotifier {
   int updatedAt = 0;
 
   /// FR-2.6 — every uploaded module is kept in "Archived Modules", newest first.
-  /// Rewards waiting in Study: an unclaimed upload reward, or a first quiz
-  /// that still pays coins.
-  int get pendingRewards => modules.where((m) => (m.verified && !m.rewardClaimed) || m.attempts == 0).length;
+  /// Upload rewards waiting to be claimed (red dot on the Study tab).
+  int get pendingRewards => modules.where(hasRewardToClaim).length;
+  static bool hasRewardToClaim(StudyModule m) => m.verified && !m.rewardClaimed;
 
   List<StudyModule> get allModules => [...modules]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   int get masteredCount => modules.where((m) => m.mastered).length;

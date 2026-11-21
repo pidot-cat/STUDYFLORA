@@ -53,7 +53,12 @@ class StudyScreen extends StatelessWidget {
               if (modules.isEmpty)
                 const _InlineEmpty(icon: Icons.inventory_2_outlined, text: 'Modules you upload are saved here so you can reopen them anytime.')
               else
-                for (final m in modules.take(2)) ModuleTile(module: m),
+                // Modules with a reward to claim come first so the red dot is easy to follow.
+                for (final m in [
+                  ...modules.where(StudyProvider.hasRewardToClaim),
+                  ...modules.where((m) => !StudyProvider.hasRewardToClaim(m)),
+                ].take(2))
+                  ModuleTile(module: m),
 
               const SizedBox(height: 6),
               _InfoNote(onTap: () => showRewardsInfo(context)),
@@ -380,12 +385,15 @@ class ModuleTile extends StatelessWidget {
             ]),
           ),
           const SizedBox(width: 8),
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: c.surfaceAlt, borderRadius: BorderRadius.circular(10)),
-            child: Icon(Icons.chevron_right_rounded, color: c.muted, size: 20),
-          ),
+          if (StudyProvider.hasRewardToClaim(m))
+            ClaimPill(onTap: () => showUploadRewardSheet(context, m))
+          else
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: c.surfaceAlt, borderRadius: BorderRadius.circular(10)),
+              child: Icon(Icons.chevron_right_rounded, color: c.muted, size: 20),
+            ),
         ]),
       ),
     );

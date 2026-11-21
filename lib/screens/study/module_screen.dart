@@ -74,14 +74,16 @@ class ModuleScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: SfCard(
-                color: c.goldSoft,
+                color: c.dangerSoft,
+                border: c.danger.withValues(alpha: 0.35),
                 onTap: () => showUploadRewardSheet(context, m),
                 padding: const EdgeInsets.all(14),
                 child: Row(children: [
-                  Icon(Icons.card_giftcard_rounded, color: c.gold),
+                  Icon(Icons.card_giftcard_rounded, color: c.danger),
                   const SizedBox(width: 10),
                   Expanded(child: Text('Verified module — claim your upload reward', style: context.tt.titleSmall)),
-                  Icon(Icons.chevron_right_rounded, color: c.muted),
+                  const SizedBox(width: 8),
+                  ClaimPill(onTap: () => showUploadRewardSheet(context, m)),
                 ]),
               ),
             ),

@@ -87,7 +87,7 @@ class _Grid extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: showcased ? c.brandSoft : c.surface,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: claimable ? c.gold : (showcased ? c.accent : c.line), width: claimable || showcased ? 2 : 1.2),
+                  border: Border.all(color: claimable ? c.danger : (showcased ? c.accent : c.line), width: claimable || showcased ? 2 : 1.2),
                   boxShadow: [BoxShadow(color: c.shadow, blurRadius: 10, offset: const Offset(0, 4))],
                 ),
                 child: Column(children: [
@@ -99,7 +99,7 @@ class _Grid extends StatelessWidget {
                     child: Text(b.description, style: context.tt.bodySmall?.copyWith(fontSize: 10.5), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis),
                   ),
                   if (claimable)
-                    StatusBadge(b.rewardCoins > 0 ? 'Claim ${b.rewardCoins}c' : 'Claim ${b.rewardXp} XP', tone: Tone.gold, dense: true)
+                    ClaimPill(label: b.rewardCoins > 0 ? 'Claim ${b.rewardCoins} coins' : 'Claim ${b.rewardXp} XP', dense: true)
                   else if (showcased)
                     const StatusBadge('Showcased', dense: true)
                   else if (!unlocked && (b.rewardCoins > 0 || b.rewardXp > 0))
