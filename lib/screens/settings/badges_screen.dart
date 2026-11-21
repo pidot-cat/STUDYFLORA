@@ -99,7 +99,7 @@ class _Grid extends StatelessWidget {
                     child: Text(b.description, style: context.tt.bodySmall?.copyWith(fontSize: 10.5), textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis),
                   ),
                   if (claimable)
-                    ClaimPill(label: b.rewardCoins > 0 ? 'Claim ${b.rewardCoins} coins' : 'Claim ${b.rewardXp} XP', dense: true)
+                    Center(child: ClaimPill(label: b.rewardCoins > 0 ? 'Claim +${b.rewardCoins}' : 'Claim +${b.rewardXp} XP', dense: true))
                   else if (showcased)
                     const StatusBadge('Showcased', dense: true)
                   else if (!unlocked && (b.rewardCoins > 0 || b.rewardXp > 0))

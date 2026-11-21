@@ -261,7 +261,11 @@ class ClaimPill extends StatelessWidget {
     final pill = Container(
       padding: EdgeInsets.symmetric(horizontal: dense ? 9 : 14, vertical: dense ? 3 : 6),
       decoration: BoxDecoration(color: context.sf.danger, borderRadius: BorderRadius.circular(99)),
-      child: Text(label, maxLines: 1, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: dense ? 10.5 : 12.5)),
+      // Never clipped: shrinks a little instead when space is tight.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(label, maxLines: 1, softWrap: false, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: dense ? 10.5 : 12.5)),
+      ),
     );
     return onTap == null ? pill : Pressable(onTap: onTap, child: pill);
   }
